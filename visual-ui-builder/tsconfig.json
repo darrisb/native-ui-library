@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/components" },
+    { "path": "./packages/renderer" },
+    { "path": "./apps/builder" },
+    { "path": "./examples/json-renderer" }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "visual-ui-builder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-independent UI component library using native Web Components",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@visual-ui/builder",
+    "build": "npm run build --workspace=@visual-ui/core && npm run build --workspace=@visual-ui/components &&npm run build --workspace=@visual-ui/renderer && npm run build --workspace=@visual-ui/builder",
+    "typecheck": "tsc --build",
+    "dev:json-renderer": "vite --config examples/json-renderer/vite.config.ts",
+    "build:json-renderer": "vite build --config examples/json-renderer/vite.config.ts",
+    "test:json-renderer": "tsc --build examples/json-renderer/tsconfig.json && node examples/json-renderer/dist-test/__tests__/json-renderer.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

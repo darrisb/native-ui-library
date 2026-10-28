@@ -1,0 +1,74 @@
+.properties-empty-message {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.properties-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.properties-component-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.properties-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.properties-field-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.properties-control {
+  padding: 0.5rem 0.625rem;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+}
+
+.properties-control:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.properties-control--color {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.properties-control--checkbox {
+  width: fit-content;
+  min-height: 1.25rem;
+  min-width: 1.25rem;
+  padding: 0;
+}
+
+.properties-control--multiline {
+  min-height: 4.5rem;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.properties-validation-message {
+  min-height: 1.25rem;
+  font-size: 0.8125rem;
+  color: #dc3545;
+}
+
+.properties-unsupported-message {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}

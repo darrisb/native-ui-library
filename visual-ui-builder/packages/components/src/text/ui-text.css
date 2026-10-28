@@ -1,0 +1,14 @@
+:host {
+  display: block;
+  width: 100%;
+  --ui-text-color: #000000;
+  --ui-text-align: left;
+}
+
+[part="text"] {
+  display: block;
+  width: 100%;
+  color: var(--ui-text-color);
+  text-align: var(--ui-text-align, left);
+  line-height: 1.5;
+}

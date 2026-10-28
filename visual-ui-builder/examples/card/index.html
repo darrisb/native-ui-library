@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UI Card Verification</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f3f4f6;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    ui-card.custom {
+      --ui-card-background: #1f2937;
+      --ui-card-border-color: #374151;
+      --ui-card-radius: 1rem;
+      --ui-card-padding: 1.5rem;
+      --ui-card-title-color: #f9fafb;
+      --ui-card-text-color: #d1d5db;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="grid">
+    <ui-card title="Product Information" description="Product details">
+      <p>This content appears inside the card.</p>
+    </ui-card>
+
+    <ui-card title="Slotted HTML Content">
+      <ul>
+        <li>Feature one</li>
+        <li>Feature two</li>
+        <li>Feature three</li>
+      </ul>
+    </ui-card>
+
+    <ui-card class="custom" title="Custom Themed Card" description="This card uses custom CSS variables.">
+      <p>The background, border, radius, padding, and text colors are customized.</p>
+    </ui-card>
+
+    <ui-card id="updating-card" title="Initial Title" description="Initial description.">
+      <p>This card's attributes will update after three seconds.</p>
+    </ui-card>
+  </div>
+
+  <script type="module">
+    import "../../packages/components/dist/register.js";
+
+    setTimeout(() => {
+      const card = document.getElementById("updating-card");
+      if (card) {
+        card.setAttribute("title", "Updated Title");
+        card.setAttribute("description", "This description was updated after initial rendering.");
+      }
+    }, 3000);
+  </script>
+</body>
+
+</html>

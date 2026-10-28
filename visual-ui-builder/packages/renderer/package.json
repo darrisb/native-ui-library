@@ -1,0 +1,28 @@
+{
+  "name": "@visual-ui/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rendering and serialization logic for Visual UI Builder",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "node dist/__tests__/render-component.test.js"
+  },
+  "dependencies": {
+    "@visual-ui/core": "^0.1.0",
+    "@visual-ui/components": "^0.1.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

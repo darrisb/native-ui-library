@@ -1,0 +1,94 @@
+.canvas-boundary {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-boundary:has(.canvas-content) {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.canvas-empty-message {
+  margin: auto;
+}
+
+.canvas-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.canvas-content > * {
+  flex-shrink: 0;
+}
+
+.canvas-instance-wrapper {
+  position: relative;
+  border-radius: 0.25rem;
+}
+
+.canvas-instance-wrapper--selected {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.canvas-instance-wrapper--drop-target {
+  outline: 2px dashed var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Drag handles. Builder-owned UI only; never part of the document. */
+.canvas-drag-handle {
+  user-select: none;
+}
+
+.canvas-instance-wrapper--dragging .canvas-drag-handle {
+  opacity: 1;
+}
+
+/* Drag-and-drop feedback. Builder-owned UI only; never part of the document. */
+.canvas-boundary {
+  position: relative;
+}
+
+.canvas-boundary.canvas-boundary--drop-active {
+  border-color: var(--focus-ring);
+  border-style: solid;
+  background-color: #f3f8ff;
+}
+
+.canvas-drop-indicator {
+  position: absolute;
+  left: 2rem;
+  right: 2rem;
+  height: 4px;
+  transform: translateY(-50%);
+  background-color: var(--focus-ring);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.canvas-drop-indicator--empty {
+  top: 2rem;
+}
+
+.canvas-drop-indicator--nested {
+  left: auto;
+  right: auto;
+  width: auto;
+}
+
+.canvas-drop-indicator--nested.canvas-drop-indicator--empty {
+  height: auto;
+  min-height: 2rem;
+  border: 2px dashed var(--focus-ring);
+  border-radius: 0.25rem;
+  background-color: rgba(37, 99, 235, 0.08);
+  transform: none;
+}
+
+ui-card {
+  width: 100%;
+}

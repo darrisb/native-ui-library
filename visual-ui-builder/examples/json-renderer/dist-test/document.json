@@ -1,0 +1,74 @@
+[
+    {
+        "id": "card-welcome",
+        "type": "card",
+        "properties": {
+            "title": "Welcome",
+            "description": "Discover our reusable native UI components.",
+            "padding": 24,
+            "backgroundColor": "#ffffff"
+        },
+        "children": [
+            {
+                "id": "text-welcome",
+                "type": "text",
+                "properties": {
+                    "content": "Discover our latest arrivals.",
+                    "color": "#333333",
+                    "align": "left"
+                }
+            },
+            {
+                "id": "button-welcome",
+                "type": "button",
+                "properties": {
+                    "label": "Shop Now",
+                    "variant": "primary",
+                    "disabled": false
+                }
+            }
+        ]
+    },
+    {
+        "id": "card-features",
+        "type": "card",
+        "properties": {
+            "title": "Features",
+            "description": "Built with TypeScript, Web Components, and a shared JSON renderer.",
+            "padding": 16,
+            "backgroundColor": "#f0f4ff"
+        },
+        "children": [
+            {
+                "id": "card-nested",
+                "type": "card",
+                "properties": {
+                    "title": "Nested Card",
+                    "padding": 16,
+                    "backgroundColor": "#ffffff"
+                },
+                "children": [
+                    {
+                        "id": "text-nested",
+                        "type": "text",
+                        "properties": {
+                            "content": "This text lives inside a nested Card.",
+                            "color": "#111827",
+                            "align": "left"
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "card-contact",
+        "type": "card",
+        "properties": {
+            "title": "Contact Us",
+            "padding": 20,
+            "backgroundColor": "#f0fdf4"
+        },
+        "children": []
+    }
+]

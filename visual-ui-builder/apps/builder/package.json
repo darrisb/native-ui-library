@@ -1,0 +1,21 @@
+{
+  "name": "@visual-ui/builder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Visual UI Builder application",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types src/drag-drop/__tests__/drag-payload.test.ts && node --experimental-strip-types src/drag-drop/__tests__/drop-position.test.ts && node --experimental-strip-types src/palette/__tests__/component-palette.test.ts && node --experimental-strip-types src/palette/__tests__/component-palette-interaction.test.ts && node --experimental-strip-types src/state/__tests__/builder-state.test.ts && node --experimental-strip-types src/factories/__tests__/component-instance-factory.test.ts && node --experimental-strip-types src/canvas/__tests__/builder-canvas.test.ts && node --experimental-strip-types src/properties/__tests__/properties-panel.test.ts && node --experimental-strip-types src/registry/__tests__/builder-registry.test.ts"
+  },
+  "dependencies": {
+    "@visual-ui/core": "^0.1.0",
+    "@visual-ui/components": "^0.1.0",
+    "@visual-ui/renderer": "^0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}
