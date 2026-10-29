@@ -10,6 +10,9 @@ export type PropertyChangeHandler = (
   patch: Record<string, string | number | boolean>
 ) => void;
 
+/** Called when the user requests deletion of the supplied instance. */
+export type DeleteComponentHandler = (instanceId: string) => void;
+
 export interface PropertiesPanelApi {
   /** Id of the instance currently being edited, or null in empty state. */
   readonly instanceId: string | null;
@@ -313,7 +316,8 @@ function createField(
 function buildForm(
   instance: ComponentInstance,
   definition: ComponentDefinition,
-  onChange: PropertyChangeHandler
+  onChange: PropertyChangeHandler,
+  onDelete?: DeleteComponentHandler
 ): { root: HTMLElement; fields: FieldState[]; validationMessage: HTMLElement } {
   const root = document.createElement("div");
   root.className = "properties-form";
@@ -342,6 +346,21 @@ function buildForm(
     fields.push(state);
   }
 
+  if (onDelete) {
+    const separator = document.createElement("hr");
+    separator.className = "properties-action-separator";
+    root.appendChild(separator);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "properties-delete-button";
+    deleteButton.textContent = "Delete Component";
+    deleteButton.addEventListener("click", () => {
+      onDelete(instance.id);
+    });
+    root.appendChild(deleteButton);
+  }
+
   return { root, fields, validationMessage };
 }
 
@@ -368,12 +387,17 @@ function getFallbackDefault(
  * When `instance` is null, an empty-state message is shown. The returned API
  * can be used to refresh control values without rebuilding the form, which
  * preserves input focus while the document updates.
+ *
+ * When `onDelete` is provided and `instance` is not null, a native Delete
+ * Component button is rendered at the bottom of the form. The empty state
+ * never renders the delete action.
  */
 export function renderPropertiesPanel(
   container: HTMLElement,
   instance: ComponentInstance | null,
   registry: ComponentRegistry,
-  onChange: PropertyChangeHandler
+  onChange: PropertyChangeHandler,
+  onDelete?: DeleteComponentHandler
 ): PropertiesPanelApi {
   container.innerHTML = "";
 
@@ -409,7 +433,8 @@ export function renderPropertiesPanel(
   const { root, fields, validationMessage } = buildForm(
     instance,
     definition,
-    onChange
+    onChange,
+    onDelete
   );
   container.appendChild(root);
 

@@ -6,6 +6,7 @@ import {
   insertChildInstanceAt,
   insertRootInstanceAt,
   moveComponentById,
+  removeComponentById,
   updateComponentById,
   type BuilderDocument,
 } from "./builder-document.ts";
@@ -106,6 +107,19 @@ export interface BuilderState {
     targetIndex: number,
     registry: ComponentRegistry
   ): void;
+
+  /**
+   * Removes the instance matching `componentId` together with its entire
+   * descendant subtree and notifies document subscribers exactly once.
+   *
+   * When the currently selected instance is the deleted instance or one of its
+   * descendants, selection is cleared and selection subscribers are notified.
+   * Unrelated selection is preserved and no selection notification is emitted.
+   *
+   * If the instance is not found, the state is left untouched and no
+   * subscribers are notified.
+   */
+  deleteComponent(componentId: string): void;
 
   /**
    * Merges the supplied property patch into the instance's existing properties,
@@ -281,6 +295,27 @@ export function createBuilderState(
       if (document !== beforeDocument) {
         notifyDocument();
       }
+    },
+
+    deleteComponent(componentId: string): void {
+      const beforeDocument = document;
+      const afterDocument = removeComponentById(document, componentId);
+
+      if (afterDocument === beforeDocument) {
+        return;
+      }
+
+      document = afterDocument;
+
+      if (
+        selectedInstanceId !== null &&
+        findComponentById(document, selectedInstanceId) === undefined
+      ) {
+        selectedInstanceId = null;
+        notifySelection();
+      }
+
+      notifyDocument();
     },
 
     selectInstance(id: string | null): void {

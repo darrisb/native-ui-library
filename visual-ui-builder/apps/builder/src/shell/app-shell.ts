@@ -184,6 +184,9 @@ export function renderAppShell(
           patch,
           builderComponentRegistry
         );
+      },
+      (instanceId) => {
+        state.deleteComponent(instanceId);
       }
     );
   };

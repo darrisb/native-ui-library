@@ -295,76 +295,71 @@ function isDescendantOf(
 }
 
 /**
- * Returns a new document with the instance matching `componentId` removed from
- * its current location.
+ * Removes the instance matching `componentId` from the supplied array and its
+ * descendants. Returns the filtered array and the removed instance, or the
+ * original array and `undefined` when no match exists.
  *
- * If the instance is not found, the original document is returned unchanged.
+ * The descendant subtree is removed together with the instance, so callers do
+ * not need to prune children separately.
  */
-function removeComponentById(
-  document: BuilderDocument,
+function detachFromInstances(
+  instances: readonly ComponentInstance[],
   componentId: string
-): { document: BuilderDocument; removed: ComponentInstance | undefined } {
-  const location = locateComponent(document.rootInstances, null, componentId);
-  if (!location) {
-    return { document, removed: undefined };
-  }
+): { updated: readonly ComponentInstance[]; removed: ComponentInstance | undefined } {
+  let removed: ComponentInstance | undefined;
+  const filtered = instances.filter((instance) => {
+    if (instance.id === componentId) {
+      removed = instance;
+      return false;
+    }
+    return true;
+  });
 
-  if (location.parentId === null) {
-    const rootInstances = document.rootInstances.filter(
-      (instance) => instance.id !== componentId
-    );
-    return {
-      document: { ...document, rootInstances },
-      removed: location.instance,
-    };
-  }
-
-  const parentId = location.parentId;
-
-  function removeFromInstances(
-    instances: readonly ComponentInstance[]
-  ): { updated: readonly ComponentInstance[]; removed: boolean } {
-    for (let i = 0; i < instances.length; i++) {
-      const current = instances[i];
-      if (current.id === parentId) {
-        const children = current.children ?? [];
-        const newChildren = children.filter(
-          (child) => child.id !== componentId
-        );
-        const updatedParent: ComponentInstance = { ...current, children: newChildren };
-        return {
-          updated: [
-            ...instances.slice(0, i),
-            updatedParent,
-            ...instances.slice(i + 1),
-          ],
-          removed: true,
-        };
-      }
-
-      const children = current.children ?? [];
+  if (!removed) {
+    for (const instance of instances) {
+      const children = instance.children ?? [];
       if (children.length === 0) {
         continue;
       }
-
-      const result = removeFromInstances(children);
+      const result = detachFromInstances(children, componentId);
       if (result.removed) {
+        removed = result.removed;
         return {
           updated: [
-            ...instances.slice(0, i),
-            { ...current, children: result.updated },
-            ...instances.slice(i + 1),
+            ...instances.slice(0, instances.indexOf(instance)),
+            { ...instance, children: result.updated },
+            ...instances.slice(instances.indexOf(instance) + 1),
           ],
-          removed: true,
+          removed,
         };
       }
     }
-
-    return { updated: instances, removed: false };
   }
 
-  const result = removeFromInstances(document.rootInstances);
-  return { document: { ...document, rootInstances: result.updated }, removed: location.instance };
+  if (!removed) {
+    return { updated: instances, removed: undefined };
+  }
+
+  return { updated: filtered, removed };
+}
+
+/**
+ * Returns a new document with the instance matching `componentId` removed from
+ * its current location together with its entire descendant subtree.
+ *
+ * If the instance is not found, the original document is returned unchanged.
+ * Unrelated instance object references and sibling order are preserved. The
+ * original document and instance objects are not mutated.
+ */
+export function removeComponentById(
+  document: BuilderDocument,
+  componentId: string
+): BuilderDocument {
+  const result = detachFromInstances(document.rootInstances, componentId);
+  if (!result.removed) {
+    return document;
+  }
+  return { ...document, rootInstances: result.updated };
 }
 
 /**
@@ -434,13 +429,18 @@ export function moveComponentById(
     return document;
   }
 
-  const { document: documentWithoutSource, removed } = removeComponentById(
-    document,
+  const { updated: rootInstancesWithoutSource, removed } = detachFromInstances(
+    document.rootInstances,
     componentId
   );
   if (!removed) {
     throw new Error(`Instance "${componentId}" not found.`);
   }
+
+  const documentWithoutSource: BuilderDocument = {
+    ...document,
+    rootInstances: rootInstancesWithoutSource,
+  };
 
   if (targetParentId === null) {
     return insertRootInstanceAt(documentWithoutSource, removed, targetIndex);

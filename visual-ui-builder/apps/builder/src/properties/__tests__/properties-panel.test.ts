@@ -748,6 +748,148 @@ test("Preserving existing root-level Card editing", () => {
   assertEqual(changedPatch?.["title"], "Updated Root");
 });
 
+// -----------------------------------------------------------------------------
+// Delete Component action.
+// -----------------------------------------------------------------------------
+
+function findDeleteButton(container: MockElement): MockElement | undefined {
+  const form = container.children[0];
+  if (!form) {
+    return undefined;
+  }
+  const walk = (element: MockElement): MockElement | undefined => {
+    if (
+      element.nodeName === "BUTTON" &&
+      element.className.includes("properties-delete-button")
+    ) {
+      return element;
+    }
+    for (const child of element.children) {
+      const found = walk(child);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  };
+  return walk(form);
+}
+
+test("Delete action appears for selected components", () => {
+  const container = createContainer();
+  const instance = createCardInstance("card-1", {
+    title: "Hello",
+    padding: 16,
+    backgroundColor: "#ffffff",
+  });
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {},
+    () => {}
+  );
+
+  const deleteButton = findDeleteButton(container);
+  assertTrue(deleteButton !== undefined, "Delete button should be present.");
+  assertEqual(deleteButton!.textContent, "Delete Component");
+});
+
+test("Delete action is absent without selection", () => {
+  const container = createContainer();
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    null,
+    registry,
+    () => {},
+    () => {}
+  );
+
+  const deleteButton = findDeleteButton(container);
+  assertEqual(deleteButton, undefined, "Delete button should be absent.");
+});
+
+test("Delete action is absent when onDelete is not provided", () => {
+  const container = createContainer();
+  const instance = createCardInstance("card-1", {
+    title: "Hello",
+    padding: 16,
+    backgroundColor: "#ffffff",
+  });
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {}
+  );
+
+  const deleteButton = findDeleteButton(container);
+  assertEqual(
+    deleteButton,
+    undefined,
+    "Delete button should be absent when no handler is supplied."
+  );
+});
+
+test("Clicking Delete invokes the handler with the instance id", () => {
+  const container = createContainer();
+  const instance = createCardInstance("card-1", {
+    title: "Hello",
+    padding: 16,
+    backgroundColor: "#ffffff",
+  });
+
+  let deletedId: string | null = null;
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {},
+    (id) => {
+      deletedId = id;
+    }
+  );
+
+  const deleteButton = findDeleteButton(container) as MockElement;
+  deleteButton.dispatchEvent({ type: "click" } as unknown as Event);
+
+  assertEqual(deletedId, "card-1");
+});
+
+test("Delete button preserves property editing", () => {
+  const container = createContainer();
+  const instance = createCardInstance("card-1", {
+    title: "Hello",
+    padding: 16,
+    backgroundColor: "#ffffff",
+  });
+
+  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let deleted = false;
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    (_id, patch) => {
+      changedPatch = patch;
+    },
+    () => {
+      deleted = true;
+    }
+  );
+
+  const titleControl = findControl(container, "card-1", "title") as MockElement;
+  titleControl.value = "Updated";
+  titleControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  assertEqual(changedPatch?.["title"], "Updated");
+  assertEqual(deleted, false);
+});
+
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;
 
