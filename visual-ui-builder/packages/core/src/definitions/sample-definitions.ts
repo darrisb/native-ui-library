@@ -7,6 +7,14 @@ export const cardDefinition: ComponentDefinition = {
   category: "content",
   description: "Container for related content.",
   allowChildren: true,
+  dataBinding: ["options"],
+  events: [
+    {
+      event: "click",
+      label: "Click",
+      requiresAction: true
+    }
+  ],
   properties: [
     {
       name: "title",
@@ -43,6 +51,12 @@ export const buttonDefinition: ComponentDefinition = {
   category: "actions",
   description: "Interactive button control.",
   allowChildren: false,
+  events: [
+    {
+      event: "click",
+      label: "Click"
+    }
+  ],
   properties: [
     {
       name: "label",

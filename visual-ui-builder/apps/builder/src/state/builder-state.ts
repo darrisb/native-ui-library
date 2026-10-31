@@ -1,4 +1,4 @@
-import type { ComponentInstance, ComponentRegistry } from "@visual-ui/core";
+import type { ComponentAction, ComponentInstance, ComponentRegistry, DataSource } from "@visual-ui/core";
 import { validateComponentInstance } from "@visual-ui/components";
 import {
   addRootInstance,
@@ -134,6 +134,44 @@ export interface BuilderState {
   updateInstanceProperties(
     id: string,
     patch: Record<string, string | number | boolean>,
+    registry: ComponentRegistry
+  ): void;
+
+  /**
+   * Replaces the entire action list on the instance matching `id`, validates
+   * the result against the metadata registry, and updates the document when
+   * validation succeeds.
+   *
+   * The instance may be anywhere in the document tree. The full replacement
+   * (rather than a per-field patch) keeps action validation atomic: invalid
+   * intermediate states are never persisted, and undo/redo restores the exact
+   * previous action set.
+   *
+   * @throws Error when the instance is not found or validation fails.
+   */
+  updateInstanceActions(
+    id: string,
+    actions: ComponentAction[],
+    registry: ComponentRegistry
+  ): void;
+
+  /**
+   * Replaces the entire data source on the instance matching `id`, validates
+   * the result against the metadata registry, and updates the document when
+   * validation succeeds.
+   *
+   * The instance may be anywhere in the document tree. The full replacement
+   * (rather than a per-field patch) keeps data source validation atomic:
+   * invalid intermediate states are never persisted, and undo/redo restores the
+   * exact previous data source.
+   *
+   * Pass `undefined` to clear the data source (revert to static rendering).
+   *
+   * @throws Error when the instance is not found or validation fails.
+   */
+  updateInstanceDataSource(
+    id: string,
+    dataSource: DataSource | undefined,
     registry: ComponentRegistry
   ): void;
 
@@ -431,6 +469,60 @@ export function createBuilderState(
       if (errors.length > 0) {
         const messages = errors.map((error) => error.message).join("; ");
         throw new Error(`Invalid property update: ${messages}`);
+      }
+
+      const nextDocument = updateComponentById(document, id, () => updatedInstance);
+      document = nextDocument;
+      recordHistory(nextDocument);
+      notifyDocument();
+    },
+
+    updateInstanceActions(
+      id: string,
+      actions: ComponentAction[],
+      registry: ComponentRegistry
+    ): void {
+      const target = findComponentById(document, id);
+      if (!target) {
+        throw new Error(`Instance "${id}" does not exist.`);
+      }
+
+      const updatedInstance: ComponentInstance = {
+        ...target,
+        actions,
+      };
+
+      const errors = validateComponentInstance(updatedInstance, registry);
+      if (errors.length > 0) {
+        const messages = errors.map((error) => error.message).join("; ");
+        throw new Error(`Invalid action update: ${messages}`);
+      }
+
+      const nextDocument = updateComponentById(document, id, () => updatedInstance);
+      document = nextDocument;
+      recordHistory(nextDocument);
+      notifyDocument();
+    },
+
+    updateInstanceDataSource(
+      id: string,
+      dataSource: DataSource | undefined,
+      registry: ComponentRegistry
+    ): void {
+      const target = findComponentById(document, id);
+      if (!target) {
+        throw new Error(`Instance "${id}" does not exist.`);
+      }
+
+      const updatedInstance: ComponentInstance = {
+        ...target,
+        dataSource,
+      };
+
+      const errors = validateComponentInstance(updatedInstance, registry);
+      if (errors.length > 0) {
+        const messages = errors.map((error) => error.message).join("; ");
+        throw new Error(`Invalid data source update: ${messages}`);
       }
 
       const nextDocument = updateComponentById(document, id, () => updatedInstance);

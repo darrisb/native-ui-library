@@ -1,0 +1,50 @@
+[
+  {
+    "id": "card-api-products",
+    "type": "card",
+    "properties": {
+      "title": "Products (API-backed)",
+      "description": "Options loaded from a REST endpoint at runtime.",
+      "padding": 24,
+      "backgroundColor": "#ffffff"
+    },
+    "dataSource": {
+      "type": "rest",
+      "method": "GET",
+      "url": "https://api.example.com/catalog/products",
+      "responsePath": "data.items",
+      "mapping": {
+        "label": "name",
+        "value": "sku"
+      },
+      "loadOn": "mount"
+    },
+    "bindings": [
+      { "target": "options" }
+    ]
+  },
+  {
+    "id": "card-api-status",
+    "type": "card",
+    "properties": {
+      "title": "Order Statuses (API-backed)",
+      "description": "A second instance sharing the same runtime.",
+      "padding": 16,
+      "backgroundColor": "#f0f4ff"
+    },
+    "dataSource": {
+      "type": "rest",
+      "method": "GET",
+      "url": "https://api.example.com/orders/statuses",
+      "responsePath": "results",
+      "mapping": {
+        "label": "displayName",
+        "value": "code"
+      },
+      "loadOn": "mount"
+    },
+    "bindings": [
+      { "target": "options" }
+    ]
+  }
+]

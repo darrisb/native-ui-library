@@ -5,6 +5,7 @@ import {
   registerText,
   registerButton,
 } from "@visual-ui/components";
+import { ActionExecutor } from "@visual-ui/renderer";
 import { renderDocument } from "./renderer.js";
 
 function showError(container: HTMLElement, message: string): void {
@@ -48,9 +49,14 @@ async function renderApp(): Promise<void> {
     registerText(metadataRegistry, nativeRegistry);
     registerButton(metadataRegistry, nativeRegistry);
 
+    // The standalone runtime renders in interactive mode so that configured
+    // declarative actions (e.g. navigate) are wired to the rendered elements.
+    // The default ActionExecutor uses the browser's navigation adapter.
     const result = renderDocument(jsonDocument, {
       metadataRegistry,
       nativeRegistry,
+      mode: "interactive",
+      actionExecutor: new ActionExecutor(),
     });
 
     if (result.errors.length > 0) {

@@ -1,0 +1,28 @@
+{
+  "taskId": "1.12.10.4",
+  "taskTitle": "Add data source runtime lifecycle",
+  "codingProvider": "opencode-go",
+  "codingModel": "longcat-2.0",
+  "reviewerProvider": "opencode-go",
+  "reviewerModel": "qwen3.8-flash",
+  "reviewedCommitSha": "a494904089d39450a9b93c74f79ab46f0217bb4c",
+  "reviewAttempt": 1,
+  "reviewedAt": "2026-10-29T14:48:38.041Z",
+  "verificationContext": {
+    "exitCode": 0,
+    "commands": []
+  },
+  "reviewSessionId": "ses_1a1881a88ec5eb55b0c4661c636",
+  "overallAssessment": "review_failed",
+  "findings": [],
+  "executionStatus": "failed",
+  "error": "Reviewer JSON report is invalid: Expected ',' or '}' after property value in JSON at position 11967 (line 52 column 539)",
+  "tokenUsage": {
+    "input": 252,
+    "output": 24289,
+    "reasoning": 0,
+    "cacheRead": 2392629,
+    "cacheWrite": 94109
+  },
+  "reportedCost": 0.06855749399999997
+}

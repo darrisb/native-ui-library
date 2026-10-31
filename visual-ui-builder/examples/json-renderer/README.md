@@ -135,6 +135,92 @@ examples/json-renderer/dist/
 Vite bundles all workspace dependencies, so the emitted JavaScript contains no
 unresolved bare imports such as `@visual-ui/core` or `@visual-ui/renderer`.
 
+## Data-bound (API-backed) example
+
+A second document, `data-bound-document.json`, demonstrates the generic
+fetch -> map -> bind pipeline: a Card's options are resolved from a declarative
+REST data source at runtime rather than from static properties.
+
+### How it works
+
+Each Card declares a `dataSource` (type `rest`, method `GET`) plus a
+`bindings` entry targeting the `"options"` render slot. At mount time the
+`DataSourceRuntime` fetches the URL, extracts the collection via
+`responsePath`, projects each record to `{ label, value }` via `mapping`, and
+delivers the mapped records to a binding adapter registered for the `"options"
+target.
+
+Example JSON:
+
+```json
+{
+  "id": "card-api-products",
+  "type": "card",
+  "properties": { "title": "Products (API-backed)", "padding": 24 },
+  "dataSource": {
+    "type": "rest",
+    "method": "GET",
+    "url": "https://api.example.com/catalog/products",
+    "responsePath": "data.items",
+    "mapping": { "label": "name", "value": "sku" },
+    "loadOn": "mount"
+  },
+  "bindings": [{ "target": "options" }]
+}
+```
+
+- `responsePath` (`data.items`) drills into the response payload to the array of
+  records.
+- `mapping` (`{ "label": "name", "value": "sku" }`) projects each source record
+  to the `label`/`value` shape the `"options"` binding target expects.
+
+### Mock option-consumer adapter
+
+A Dropdown component does not exist yet, so `option-consumer-adapter.ts` provides
+a **mock** adapter for the `"options"` binding target that renders each resolved
+record as an `<li>` inside the host element. This adapter proves the pipeline
+end-to-end without assuming any particular consumer component. A future Dropdown
+would replace this adapter; the `data-bound-options` attribute contract and the
+binding-target name (`"options"`) stay stable.
+
+Run the data-bound page:
+
+```bash
+npm run dev:json-renderer
+# then open http://localhost:5174/data-bound.html
+```
+
+`data-bound-main.ts` wires the mock fetch adapter (so the page runs with no live
+network) and the mock option-consumer binding adapter to the renderer.
+
+### CORS requirement
+
+The external API **must** permit cross-origin requests from the page's origin:
+the browser enforces CORS on the fetch made by `RestFetchAdapter`. If the API
+does not send `Access-Control-Allow-Origin`, the browser blocks the response
+and the data source resolves to an error state.
+
+For private/internal APIs that cannot be exposed with CORS headers, the customer
+must supply a same-origin proxy or backend relay. The proxy forwards the request
+to the private API and re-emits the response with permissive CORS headers. The
+`dataSource.url` then points at the proxy, never at the private backend
+directly.
+
+No credentials are embedded in the data source contract — the adapter rejects
+URLs containing userinfo and sends no `Authorization` or `Cookie` headers by
+design, keeping project JSON free of secrets.
+
+### Scope
+
+- `data-bound-document.json` is a **fixture**: it shows the declarative REST
+  data source shape. It is exercised by focused integration tests, not by the
+  default `index.html`.
+- `option-consumer-adapter.ts` is a **verification seam**: a mock adapter that
+  renders resolved records into the DOM. It is not a native component in the
+  builder palette and is not imported by the builder.
+- `data-bound.html` + `data-bound-main.ts` form a standalone page that loads
+  with a mock fetch and no builder server.
+
 ## Scope
 
 - This example supports **root-level Card, Text, and Button instances**.

@@ -1,5 +1,7 @@
 import {
   ComponentRegistry,
+  validateActions,
+  validateDataSourceContracts,
   type ComponentInstance,
   type ComponentPropertyType,
 } from "@visual-ui/core";
@@ -124,6 +126,19 @@ export function validateComponentInstance(
   }
 
   validateProperties(instance, definition, path, errors);
+
+  // ActionValidationIssue is structurally identical to ValidationError, so
+  // merging keeps a single flat ValidationError[] for downstream consumers.
+  errors.push(...validateActions(instance.actions, path, []));
+
+  // DataSourceValidationIssue is structurally identical to ValidationError,
+  // so merging keeps a single flat list for downstream consumers.
+  validateDataSourceContracts(
+    instance.dataSource,
+    instance.bindings,
+    path,
+    errors
+  );
 
   const children = instance.children ?? [];
   if (children.length > 0) {

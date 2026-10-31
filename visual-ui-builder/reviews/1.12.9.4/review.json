@@ -1,0 +1,181 @@
+{
+  "taskId": "1.12.9.4",
+  "taskTitle": "Wire action events into JSON renderer",
+  "codingProvider": "opencode-go",
+  "codingModel": "longcat-2.0",
+  "reviewerProvider": "opencode-go",
+  "reviewerModel": "qwen3.8-flash",
+  "reviewedCommitSha": "32feb258bb7f11e07e16923b68cf8e7b2f20754b",
+  "reviewAttempt": 1,
+  "reviewedAt": "2026-10-29T13:05:58.987Z",
+  "verificationContext": {
+    "exitCode": 0,
+    "commands": []
+  },
+  "reviewSessionId": "ses_1a187bda97bc43482189b94b698",
+  "overallAssessment": "conditional - The wiring is broadly correct and safe: an explicit `RendererMode` was added with `\"edit\"` as the default (so the builder canvas and `examples/json-renderer`, which both call `renderComponent` without `mode`, are provably unchanged), listeners are only attached for events declared in `ComponentDefinition.events` (so untrusted JSON cannot bind arbitrary events), child listeners call `stopPropagation()` for nested isolation, and a `detachActionListeners` teardown helper is exported. Focused tests cover edit-mode inertness, interactive dispatch, nested isolation and detach. However the deduplication guard is effectively unreachable for the real rerender path (every render creates brand-new elements) while silently dropping additional actions bound to the same event, no tree-level teardown exists or is used, several listed sub-requirements are only nominally satisfied, and a few edge cases (default-mode inertness, same-element rebind, `hover`/`focus` mapping, headless `ActionExecutor()` construction) are untested or latent bugs.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "Duplicate-binding guard is keyed only by event name, so additional actions bound to the same event on the same instance are silently dropped and never fire. The core action contract does not forbid two actions with different ids on one event (validateAction only checks id is a non-empty string and event is in ALLOWED_EVENTS — it never enforces uniqueness per event), so `{actions: [{id:'a1',event:'click',...},{id:'a2',event:'click',...}]}` is a valid document where only the first action is ever invoked, with no warning.",
+      "evidence": "packages/renderer/src/dom/bind-action-events.ts:104-131 — `boundEvents` is a `Set<string>` of event names; `if (boundEvents.has(eventName)) { continue; }` skips every later action for that event. Compare packages/core/src/validation/validate-action.ts:105-142 (no per-event uniqueness rule) and packages/core/src/types/component-instance.ts:24 (`actions?: readonly ComponentAction[]`). Also `packages/components/src/validation/validate-instance.ts:131` forwards to `validateActions` without further constraints. No test in packages/renderer/src/__tests__/action-event-wiring.test.ts exercises multiple actions on one event.",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/renderer/src/__tests__/action-event-wiring.test.ts"
+      ],
+      "lineNumbers": [
+        104,
+        117,
+        118
+      ],
+      "recommendedCorrection": "Key the listener records by action id (or collect all actions for one event into a single listener that executes them in document order), and/or add a focused test documenting the intended semantics when several actions share an event. If the one-action-per-event rule is intentional, enforce it in core validation (duplicate `event` per instance) or emit a diagnostic instead of silently skipping."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "The \"prevent listener duplication across rerenders\" mechanism is unreachable in the current architecture, and the test that appears to cover it gives false assurance. `renderComponent` always calls `document.createElement` for every instance, so no element object is ever passed to `bindActionEvents` twice; `getListenerRecords(element)` is therefore always empty, and the existing test renders twice and inspects only the *second, brand-new* element — it would pass even if the dedup logic were deleted. Conversely, if a future in-place update path does reuse an element after the instance's actions change, the guard becomes a stale-closure bug: the listener holding the OLD action stays bound and the new action can never be attached.",
+      "evidence": "packages/renderer/src/dom/render-component.ts:77 `const element = document.createElement(tagName);` (new element per render, per node). packages/renderer/src/__tests__/action-event-wiring.test.ts:366-376: `render(instance, \"interactive\"); const second = render(instance, \"interactive\"); assertEqual(second.listenerCount(\"click\"), 1);` — `second` is a fresh MockElement from the second `document.createElement` call (helper at lines 216-228 creates fresh registries and calls renderComponent). Nothing ever calls `bindActionEvents` twice on the same element.",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/renderer/src/__tests__/action-event-wiring.test.ts"
+      ],
+      "lineNumbers": [
+        366,
+        367,
+        374,
+        375
+      ],
+      "recommendedCorrection": "Add a test that calls `bindActionEvents` twice on the same element (and once after the instance's action changed) so the guard is actually exercised; store the bound action identity (action id) in `ListenerRecord` so a rebind with different action data detaches and re-attaches rather than silently keeping the stale action."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "Teardown support is incomplete for the nested trees the renderer produces: `detachActionListeners` only detaches listeners on the single element passed to it and no code (renderer, builder canvas, example) ever calls it, so callers must hand-roll a recursive walk of every rendered host element to dispose action listeners. This makes the \"dispose listeners on teardown\" requirement satisfiable only by accident (today's rerender path relies on `container.innerHTML = \"\"` plus GC), and a preview that keeps a live DOM subtree and wants to switch to edit mode has no supported disposal API.",
+      "evidence": "packages/renderer/src/dom/bind-action-events.ts:142-153 (per-element only, no traversal). Repo-wide grep for `detachActionListeners` finds only: packages/renderer/src/index.ts:4 (export) and packages/renderer/src/__tests__/action-event-wiring.test.ts:165,389,405 — zero production call sites. The current rerender path that happens to avoid leaks is packages/apps/builder/src/canvas/builder-canvas.ts:748 (`container.innerHTML = \"\"`).",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/renderer/src/index.ts"
+      ],
+      "lineNumbers": [
+        142,
+        4
+      ],
+      "recommendedCorrection": "Export a tree-level helper (e.g. `detachActionEventsFromTree(root: HTMLElement)` that walks `children`/assigned slot content and shadow roots, detaching at each host) and use it from the renderer's public surface, so an interactive preview can deterministically tear down listeners when switching to edit mode or unmounting; note that this can stay a pure addition without implementing later preview tasks."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "The declarative `ActionEvent` union is bound verbatim as a DOM event name, with no mapping layer, even though only `click` is a valid bubbling DOM event. A definition that declares `hover` (a name that does not exist in the DOM) would get a permanently dead listener, and `focus` (bubbles: false) bound on the custom-element host would not observe focus originating inside the component's shadow DOM (e.g. ui-button's internal <button>); those actions would silently never fire while still consuming the event name in metadata-driven binding.",
+      "evidence": "packages/core/src/types/action.ts:15 `export type ActionEvent = \"click\" | \"hover\" | \"focus\";` and packages/core/src/types/component-definition.ts:12 (`ComponentEventCapability.event: ActionEvent`) vs packages/renderer/src/dom/bind-action-events.ts:109,128 `const eventName = action.event; ... element.addEventListener(eventName, listener);`. Shadow-DOM structure that makes the `focus` case real: packages/components/src/button/ui-button.ts:104-113 (`attachShadow`, internal `document.createElement(\"button\")`). Only `click` is currently declared (packages/core/src/definitions/sample-definitions.ts:10-16, 53-58), so the defect is latent.",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/core/src/definitions/sample-definitions.ts"
+      ],
+      "lineNumbers": [
+        109,
+        128
+      ],
+      "recommendedCorrection": "Introduce an explicit declarative-event → DOM-event mapping (e.g. hover → mouseenter/mouseleave or pointerenter, focus → focusin) or resolve the DOM event name from the capability metadata, and add a comment/test that un-mappable events are rejected rather than bound as dead listeners."
+    },
+    {
+      "severity": "low",
+      "confidence": "likely",
+      "description": "`event.stopPropagation()` is called unconditionally, before the executor decides whether it will actually handle the action. Because ActionExecutor silently no-ops on unsupported action types, unsafe/empty URLs and invalid targets, a nested child carrying an invalid action swallows the event and blocks a valid parent (Card) action from firing — the opposite of the intended isolation behaviour, and invisible to the caller since rejections are silent by design.",
+      "evidence": "packages/renderer/src/dom/bind-action-events.ts:121-126 — listener body calls `event.stopPropagation();` then `executor.execute(action, event, element);`. packages/renderer/src/action/execute-action.ts:143-183 — `execute` returns without side effects for edit mode, unknown action type, disallowed target, empty/unsafe URL. No test covers a rejected child action with a valid parent action.",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/renderer/src/action/execute-action.ts"
+      ],
+      "lineNumbers": [
+        121,
+        124,
+        125
+      ],
+      "recommendedCorrection": "Have `ActionExecutor.execute` return whether the action was accepted/executed and only call `stopPropagation()` in that case (or expose a `canExecute(action)` predicate used at bind/dispatch time); add a focused test for \"invalid child action does not suppress the parent action\"."
+    },
+    {
+      "severity": "low",
+      "confidence": "likely",
+      "description": "In interactive mode without an injected executor, `renderComponent` constructs `new ActionExecutor()`, whose default `BrowserNavigationAdapter` dereferences the global `window` in its constructor default parameter. In any non-browser environment (Node tests, future SSR/export path) this throws a ReferenceError at render time, turning \"interactive mode\" into a hard crash instead of a no-op; the new tests never hit this path because the helper always injects a FakeNavigationAdapter.",
+      "evidence": "packages/renderer/src/dom/render-component.ts:14-22 `return options.actionExecutor ?? new ActionExecutor();` → packages/renderer/src/action/execute-action.ts:119-123 `this.navigationAdapter = options.navigationAdapter ?? new BrowserNavigationAdapter();` → packages/renderer/src/action/navigation-adapter.ts:31 `constructor(globalWindow: Window = window)`. Test helper always supplies an executor: packages/renderer/src/__tests__/action-event-wiring.test.ts:216-228.",
+      "files": [
+        "packages/renderer/src/dom/render-component.ts",
+        "packages/renderer/src/action/navigation-adapter.ts"
+      ],
+      "lineNumbers": [
+        21,
+        31
+      ],
+      "recommendedCorrection": "Resolve the default navigation adapter lazily (on first navigation) or guard with `typeof window === \"undefined\"`, and add a focused test that interactive mode without an injected executor does not throw when no action is dispatched (or degrades to a safe no-op)."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "Test coverage gaps against the stated requirements: (a) no test asserts that omitting `mode` entirely (the actual default used by existing callers such as the builder canvas and examples/json-renderer) attaches no listeners for an instance that HAS actions — the edit-mode tests always pass `mode: \"edit\"` explicitly; (b) the \"nested event isolation\" assertion relies on a mock `fire()` that never propagates, so it only proves `stopPropagation()` was called, not that the parent listener was skipped; (c) the new spec is not part of the package's aggregate `test` script, so a default regression run silently skips it.",
+      "evidence": "packages/renderer/src/__tests__/action-event-wiring.test.ts:234-256 use `render(instance, \"edit\")`; no case calls `renderComponent` with actions and no `mode` key (the shape used by apps/builder/src/canvas/builder-canvas.ts:267-270 and examples/json-renderer/renderer.ts:91). Mock propagation: lines 113-117 (`fire` iterates only that element's listeners). packages/renderer/package.json:19-21 — `\"test\"` runs only `render-component.test.js`; the new file is reachable only via the added `test:action-wiring` script.",
+      "files": [
+        "packages/renderer/src/__tests__/action-event-wiring.test.ts",
+        "packages/renderer/package.json"
+      ],
+      "lineNumbers": [
+        234,
+        366,
+        19
+      ],
+      "recommendedCorrection": "Add a \"default options (no mode) are inert for an instance with actions\" case, and include `dist/__tests__/action-event-wiring.test.js` (ideally also `execute-action`) in the package `test` script so the focused specs run in the standard test command."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "Listener bookkeeping uses a string expando property (`__uiActionListeners`) on the host element instead of a WeakMap. It works and is GC-safe (the record hangs off the element), but it pollutes the DOM object surface, is vulnerable to name collisions with unrelated code, and needs the `as unknown as Record<string, unknown>` casts seen throughout the module. Also, `renderComponentInternal` now performs a `metadataRegistry.lookup(instance.type)` for every element even in edit mode (the executor is null there), duplicating the lookup already done inside `validateComponentInstance`.",
+      "evidence": "packages/renderer/src/dom/bind-action-events.ts:25,38-52,152 (expando + casts). packages/renderer/src/dom/render-component.ts:80-95 — `definition` is computed unconditionally but only consumed inside `if (executor)`; packages/components/src/validation/validate-instance.ts:117 already does `registry.lookup(instance.type)`.",
+      "files": [
+        "packages/renderer/src/dom/bind-action-events.ts",
+        "packages/renderer/src/dom/render-component.ts"
+      ],
+      "lineNumbers": [
+        25,
+        82
+      ],
+      "recommendedCorrection": "Prefer a module-scoped `WeakMap<HTMLElement, ListenerRecord[]>` (no casts, auto-cleared with the element), and move the `definition` lookup inside the `if (executor)` block so edit-mode renders keep their existing work profile."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "Two overlapping and potentially contradictory \"edit mode\" controls were introduced: `RendererOptions.mode` and `ActionExecutorOptions.isEditMode`. A caller can pass `mode: \"interactive\"` together with an executor built with `{ isEditMode: true }`; the renderer then attaches listeners and calls `stopPropagation()` but nothing executes — a page that looks interactive but silently swallows clicks. `createExecutorForTree` also types its `mode` parameter as `string | undefined` rather than `RendererMode | undefined`, weakening the new contract.",
+      "evidence": "packages/renderer/src/dom/render-component.ts:14-22 (`mode: string | undefined`) and packages/renderer/src/action/execute-action.ts:99-103,148-151 (`isEditMode` short-circuit) combined with packages/renderer/src/types/renderer-options.ts:24-30 (both knobs exposed on the same options object).",
+      "files": [
+        "packages/renderer/src/dom/render-component.ts",
+        "packages/renderer/src/types/renderer-options.ts"
+      ],
+      "lineNumbers": [
+        14,
+        16,
+        24
+      ],
+      "recommendedCorrection": "Type the parameter as `RendererMode | undefined`, and reconcile the two flags (e.g. document precedence, or derive the executor's edit gating from `options.mode` and keep `isEditMode` for the executor's standalone/programmatic use)."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "The commit updates committed build artifacts (`packages/renderer/tsconfig.tsbuildinfo`, `examples/json-renderer/dist-test/tsconfig.tsbuildinfo`). These are generated TypeScript incremental-build state files; `.gitignore` excludes `dist`/`build` but not `*.tsbuildinfo`, so every build produces unrelated diff noise in review. Pre-existing repo practice, not a regression introduced here.",
+      "evidence": "Changed-file list: `M examples/json-renderer/dist-test/tsconfig.tsbuildinfo`, `M packages/renderer/tsconfig.tsbuildinfo`; .gitignore:1-8 lists `node_modules`, `dist`, `build`, `*.log`, `.DS_Store`, `.env`, `.env.local`, `.vite` and no tsbuildinfo entry.",
+      "files": [
+        "packages/renderer/tsconfig.tsbuildinfo",
+        "examples/json-renderer/dist-test/tsconfig.tsbuildinfo",
+        ".gitignore"
+      ],
+      "recommendedCorrection": "No change needed for this microtask (the reviewer/implementer guidance says not to touch .gitignore unless required); flag for the orchestrator to consider ignoring `*.tsbuildinfo` and untracking these artifacts in a housekeeping commit."
+    }
+  ],
+  "executionStatus": "completed",
+  "tokenUsage": {
+    "input": 150,
+    "output": 14957,
+    "reasoning": 0,
+    "cacheRead": 774121,
+    "cacheWrite": 55781
+  },
+  "reportedCost": 0.030594426
+}

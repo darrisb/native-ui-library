@@ -1,0 +1,120 @@
+# Review: 1.12.10.6 — Provide generic data-bound example and standalone verification
+
+- **Reviewed commit:** 6a2ca8e7b674e71e0eeb173290be2d0484af3f78
+- **Overall assessment:** conditional - The example and focused tests correctly target the existing generic data-source pipeline (RestDataSource, responsePath, mapping, "options" BindingTarget, DataSourceRuntime + createBindingAdapterRegistry + createRestFetchAdapter), keep the Dropdown/component roadmap separate, add no credentials, and touch no builder code. However, the new standalone demo page is internally inconsistent (its mock fetch cannot satisfy the second fixture, so that card permanently lands in the error state), the new focused integration test is not wired into any runnable command and appears never to have been executed, and the README makes claims the tests do not actually back up.
+- **Execution status:** completed
+- **Review attempt:** 1
+- **Reviewed at:** 2026-10-30T00:32:54.457Z
+- **Coding model:** opencode-go / longcat-2.0 (default variant)
+- **Reviewer model:** opencode-go / qwen3.8-flash (default variant)
+- **Review session:** ses_1a18a31e75a2be2c180936e1fb2
+- **Token usage:** input 180, output 21759, reasoning 0, cache 2289356, total —
+- **Reported cost:** $0.069329
+
+## Verification context
+
+- exit code: 0
+- timed out: no
+- commands that passed: none configured
+
+## Findings
+
+### 1. MEDIUM (confirmed) — The standalone data-bound page ships a mock fetch that returns a single canned payload for every URL, but the committed fixture has a second card whose responsePath/mapping do not exist in that payload. `card-api-status` therefore always resolves to the error state, so the documented demo page only ever demonstrates one of its two cards — contradicting the fixture's own description ("A second instance sharing the same runtime") and the README's claim that the page shows the fetch -> map -> bind pipeline.
+
+**Evidence:** examples/json-renderer/data-bound-main.ts lines 30-47: MOCK_RESPONSE = { data: { items: [...] } } and createMockFetch() ignores the requested URL entirely; lines 90-98 render both fixture entries. examples/json-renderer/data-bound-document.json line 39 declares `"responsePath": "results"` with mapping { displayName, code } for `card-api-status` (lines 27-44). packages/core/src/data/map-response-records.ts extractAndMapRecords (lines 272-300) fails on a missing path, and packages/renderer/src/data-source/data-source-runtime.ts lines 244-249 then set status "error". Only `data.items` (card-api-products) can succeed.
+
+**Files:** examples/json-renderer/data-bound-main.ts, examples/json-renderer/data-bound-document.json
+
+**Lines:** 30, 38, 40, 47, 90, 98
+
+**Recommended correction:** Make the example mock fetch URL-aware (e.g. return `{ data: { items: [...] } }` for the catalog URL and `{ results: [{ displayName, code }] }` for the statuses URL), or align the second fixture's responsePath/mapping with the canned payload, so both cards reach the `ready` state and render options on /data-bound.html.
+
+### 2. MEDIUM (confirmed) — The new focused integration test is not registered in any test command, so it cannot be run or verified by the project's tooling. Root `test:json-renderer` still points only at the pre-existing test file, and no script was added following the repo's established per-file convention. Combined with "no verification commands were configured for this task", the test suite for this microtask has evidently never been executed (which is how the broken second card above went unnoticed).
+
+**Evidence:** package.json line 17: `"test:json-renderer": "tsc --build examples/json-renderer/tsconfig.json && node examples/json-renderer/dist-test/__tests__/json-renderer.test.js"` — no mention of `data-bound-integration.test.js`. The repo convention is one script per focused test (packages/renderer/package.json lines 19-22: `test`, `test:execute-action`, `test:action-wiring`, `test:data-source-runtime`; apps/builder/package.json line 11 aggregates all builder test files). examples/json-renderer/dist-test/__tests__/data-bound-integration.test.js exists but nothing invokes it.
+
+**Files:** package.json, examples/json-renderer/__tests__/data-bound-integration.test.ts
+
+**Lines:** 17
+
+**Recommended correction:** Wire the test into the existing script (e.g. append `&& node examples/json-renderer/dist-test/__tests__/data-bound-integration.test.js` to `test:json-renderer`, or add a dedicated `test:json-renderer-data-bound` script) and run it once to confirm all assertions pass.
+
+### 3. MEDIUM (confirmed) — Requirement "Verify independent runtime loads without builder server" is only partially met. Nothing executes the standalone entry point or loads the page; the only independence assertion is a text grep for the literal string "@visual-ui/builder" over two example source files, and the round-trip/behaviour tests build their own inline fixtures instead of using the shipped example entry point. `renderDataBound()` in data-bound-main.ts (registry wiring, mock fetch, adapter registration, error surface) is completely uncovered.
+
+**Evidence:** examples/json-renderer/__tests__/data-bound-integration.test.ts lines 503-518: the "standalone runtime does not import builder modules" test only calls readFileSync on data-bound-main.ts / option-consumer-adapter.ts and asserts the substring is absent; it never imports or invokes data-bound-main.ts. The example's own DOM mock (`document` object at lines ~168-183 of the test) does not provide `getElementById`, so `renderDataBound()` could not run under that harness anyway.
+
+**Files:** examples/json-renderer/__tests__/data-bound-integration.test.ts, examples/json-renderer/data-bound-main.ts
+
+**Lines:** 503, 518
+
+**Recommended correction:** Add a focused test that actually renders `data-bound-document.json` through the same wiring used by data-bound-main.ts (import a testable `renderDataBound(container, fetchImpl)` export instead of an IIFE, expose `document.getElementById`-free injection), asserting both cards reach `ready` and emit `data-bound-options`. That verifies independent loading and would catch the mock-payload defect.
+
+### 4. LOW (confirmed) — README states the fixture `data-bound-document.json` "is exercised by focused integration tests", but no test reads that file; the tests only use inline `restCardInstance(...)` fixtures. The documentation overstates coverage of the example JSON.
+
+**Evidence:** examples/json-renderer/README.md lines 215-217. grep of examples/json-renderer/__tests__/data-bound-integration.test.ts for `data-bound-document` returns no hits; the round-trip test (line 462) serializes an object built by restCardInstance (defined ~line 244), not the shipped document.
+
+**Files:** examples/json-renderer/README.md, examples/json-renderer/__tests__/data-bound-integration.test.ts
+
+**Lines:** 215, 216, 217
+
+**Recommended correction:** Either load `data-bound-document.json` in the round-trip test (readFileSync + JSON.parse, render both entries, assert per-instance statuses) or amend the README to say the document shape is exercised via equivalent inline fixtures.
+
+### 5. LOW (confirmed) — Dead code / scope creep in the verification seam: `UiOptionConsumer` (a new custom element) and `defineOptionConsumer()` are exported but never imported, registered, or tested anywhere, and they duplicate the `<ul>/<li>` rendering already implemented in `optionsBindingAdapter`. The module's JSDoc advertises "two surfaces" while the README documents only the adapter, and `defineOptionConsumer`'s own doc comment names the wrong tag. Given the task rule "do not add new native component" and "keep the component roadmap separate", an unused `ui-option-consumer` element is exactly the kind of artifact that gets mistaken for a roadmap commitment.
+
+**Evidence:** examples/json-renderer/option-consumer-adapter.ts lines 79-111 (UiOptionConsumer, duplicating lines 55-71) and 113-126: comment says "Defines the `<ui-option-element>` custom element" while line 125 defines `"ui-option-consumer"`. grep across the repo for `defineOptionConsumer`/`UiOptionConsumer`/`ui-option-consumer` finds only this file and its compiled copy in dist-test — no callers. Also note render() only runs from connectedCallback, so a later change to `data-bound-options` would never re-render.
+
+**Files:** examples/json-renderer/option-consumer-adapter.ts
+
+**Lines:** 79, 111, 113, 126
+
+**Recommended correction:** Delete `UiOptionConsumer`/`defineOptionConsumer` (the binding adapter alone satisfies the task), or, if it is genuinely wanted as a documented consumer seam, use it in data-bound-main.ts and cover it with a test; fix the `<ui-option-element>` doc mismatch either way.
+
+### 6. LOW (confirmed) — The commit checks in generated build output for the new sources: compiled `.js`, `.d.ts`, source maps and an updated `tsconfig.tsbuildinfo` under `examples/json-renderer/dist-test/`, plus a self-referential copy of the project's own tsconfig. `.gitignore` excludes `dist` but not `dist-test`, so every future source edit to this example produces artifact churn and the binary-ish tsbuildinfo (which embeds node_modules-relative paths from the author's machine) will keep conflicting. `dist-test/data-bound-main.js` is also not executable under Node ESM because it emits a bare JSON import without an import attribute.
+
+**Evidence:** Changed-file list entries `dist-test/data-bound-main.js`, `dist-test/__tests__/data-bound-integration.test.js*`, `dist-test/option-consumer-adapter.*`, `dist-test/tsconfig.tsbuildinfo`; .gitignore lines 1-8 (only `dist`, no `dist-test`); dist-test/data-bound-main.js line 19: `import dataBoundDocument from "./data-bound-document.json";` (ERR_IMPORT_ATTRIBUTE_MISSING if run by node), whereas the pre-existing dist-test/main.js line 19 used a dynamic `await import("./document.json")`.
+
+**Files:** examples/json-renderer/dist-test/data-bound-main.js, examples/json-renderer/dist-test/tsconfig.tsbuildinfo, .gitignore
+
+**Lines:** 19
+
+**Recommended correction:** Do not commit `dist-test` artifacts for this new test (or add `examples/json-renderer/dist-test` to .gitignore if the orchestrator's workflow permits it); if the compiled main must exist, follow the existing dynamic-import pattern so the emitted module stays loadable outside Vite.
+
+### 7. LOW (confirmed) — The new page is dev-server-only: the example's Vite config defines no `rollupOptions.input`, so `npm run build:json-renderer` emits only the `index.html` bundle and will not produce `data-bound.html`. The README's "Create the production build" section gives no hint that the data-bound example is absent from the production assets.
+
+**Evidence:** examples/json-renderer/vite.config.ts lines 7-16 (only `root`, `build.outDir`, `build.sourcemap`, `server.port` — no `rollupOptions.input`); examples/json-renderer/data-bound.html line 52 (`<script type="module" src="./data-bound-main.ts">`); README lines 119-136 and 186-191 document the page only via the dev server.
+
+**Files:** examples/json-renderer/vite.config.ts, examples/json-renderer/data-bound.html
+
+**Lines:** 7, 16
+
+**Recommended correction:** Add `build.rollupOptions.input` with both `index.html` and `data-bound.html` (documented in the README's build section), or state explicitly in the README that the data-bound page is served only by the dev server.
+
+### 8. LOW (confirmed) — Markdown defect in the new README section: an unmatched backtick leaves the inline-code span open at the end of the "How it works" sentence, so `"options" target.` renders incorrectly.
+
+**Evidence:** examples/json-renderer/README.md line 150: "delivers the mapped records to a binding adapter registered for the `\"options\"" followed by line 151 "target." — the backtick before `"options"` is never closed on that phrase.
+
+**Files:** examples/json-renderer/README.md
+
+**Lines:** 150, 151
+
+**Recommended correction:** Rewrap as `` `"options"` target. `` and reflow the sentence onto one line.
+
+### 9. NOTE (confirmed) — The tests never assert the `data-bound-options` attribute payload, even though the capturing-adapter comment claims it and the README declares it the stable contract for a future Dropdown. A regression in the adapter's projection (label stringification / numeric value preservation) would pass the suite.
+
+**Evidence:** examples/json-renderer/__tests__/data-bound-integration.test.ts lines 228-241 (comment "writes the bound-options attribute so the pipeline is fully exercised"; only records/DOM list are asserted at lines ~415-423). The attribute is set at option-consumer-adapter.ts line 54 and mirrors the renderer's default adapter contract (packages/renderer/src/data-source/data-binding-adapter.ts line 57), but no test reads it back.
+
+**Files:** examples/json-renderer/__tests__/data-bound-integration.test.ts
+
+**Lines:** 228, 241
+
+**Recommended correction:** Assert `JSON.parse(element.getAttribute("data-bound-options"))` equals the expected `{label, value}[]` (including number preservation, e.g. `value: 1`), locking the contract the README promises to keep stable.
+
+### 10. NOTE (likely) — Minor consistency observations in the new example/tests: (a) one DataSourceRuntime is shared across two independent root render trees, which `RendererOptions.dataSourceRuntime` explicitly discourages; (b) the example never calls `unmountDataSources`, so nothing demonstrates teardown/abort; (c) the test comment says "three levels up" while the code walks two `dirname` calls (which happens to be correct).
+
+**Evidence:** packages/renderer/src/types/renderer-options.ts lines 38-43 ("For independent trees, omit this and let each render create its own") vs examples/json-renderer/data-bound-main.ts lines 84-98 and data-bound-integration.test.ts lines 507-512. `unmountDataSources` is exported (packages/renderer/src/index.ts line 1) but unused in the example.
+
+**Files:** examples/json-renderer/data-bound-main.ts, examples/json-renderer/__tests__/data-bound-integration.test.ts
+
+**Lines:** 84, 98
+
+**Recommended correction:** Either share the runtime deliberately (it is required to inject the mock fetch) and note why in a comment, or add a small teardown demonstration using `unmountDataSources`; fix the "three levels up" comment wording.

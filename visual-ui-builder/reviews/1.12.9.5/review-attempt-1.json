@@ -1,0 +1,203 @@
+{
+  "taskId": "1.12.9.5",
+  "taskTitle": "Add Action Editor to Properties panel",
+  "codingProvider": "opencode-go",
+  "codingModel": "longcat-2.0",
+  "reviewerProvider": "opencode-go",
+  "reviewerModel": "qwen3.8-flash",
+  "reviewedCommitSha": "4aa00536b3195449678c9e2d4c1da06730710300",
+  "reviewAttempt": 1,
+  "reviewedAt": "2026-10-29T13:26:32.007Z",
+  "verificationContext": {
+    "exitCode": 0,
+    "commands": []
+  },
+  "reviewSessionId": "ses_1a187cf48d86820fe321aa8752c",
+  "overallAssessment": "conditional - The Actions section is correctly metadata-gated, wired through BuilderState.updateInstanceActions with atomic validation, immutable document updates and existing undo/redo history, and the canvas stays inert (edit-mode rendering binds no action listeners; no anchors are emitted). However the editor's draft-handling has real defects: clicking 'Add Action' deliberately commits an invalid list (empty URL) that BuilderState rejects, so the first interaction in the live app shows a validation error and persists nothing; while that unfilled draft row sits in workingActions, every subsequent edit to other rows is also rejected by whole-list validation, so field values shown diverge from the persisted document and are silently lost on selection change. Event selects for actions whose event is not declared in the component metadata produce an empty select value in a real browser, making such rows permanently uneditable. Validation logic is duplicated rather than reusing core's validateActions, and it diverges from the runtime executor's URL allowlist. Focused tests exist and pass the mock-DOM paths they cover, but the panel refresh path (updateValues/focus guard) and the draft-interaction behavior are untested, and the new test files are not registered in the builder test script.",
+  "findings": [
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "Clicking 'Add Action' commits an invalid action list. The new row is created with config.url === \"\" and onCommit is fired immediately, so in the real app (app-shell wires onActionsChange to state.updateInstanceActions, which runs validateComponentInstance) the very first click throws 'Invalid action update: Navigate action \"url\" must be a non-empty string.' and is surfaced as a red validation message before the user has typed anything. Nothing is persisted, and this contradicts both the editor's own contract comment ('the editor only shows inline feedback and never commits an invalid draft') and the comment inside the handler ('Commit so the action persists even if the user never edits URL'), which cannot be true because an empty URL always fails validation.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:572-584 (`config: { url: \"\", target: \"_self\" }`, then `onCommit(instanceId, workingActions)`), contract comment at lines 370-373; rejection at apps/builder/src/state/builder-state.ts:475-479 and packages/components/src/validation/validate-instance.ts:131 with packages/core/src/validation/validate-action.ts:78-83; handler wiring at apps/builder/src/shell/app-shell.ts:343-349. The focused test only passes because the commit handler is a validating-free mock (apps/builder/src/properties/__tests__/action-editor.test.ts:413-439 asserts the empty-URL commit fires).",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        370,
+        371,
+        372,
+        373,
+        572,
+        576,
+        580,
+        581
+      ],
+      "recommendedCorrection": "Add the draft row to workingActions and re-render locally WITHOUT calling onCommit; mark the row as a draft and only commit once the row passes validation (or commit on blur/Apply). Then the empty-URL draft never reaches the state layer and no error is shown until the user actually submits an invalid URL."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "An unfilled draft row blocks persistence of edits to all other rows, because the editor always commits the whole list and the state layer validates the whole list atomically. After clicking 'Add Action' (draft row with empty URL kept in workingActions), editing an existing valid row's URL/target commits [validEdit..., emptyDraft], which BuilderState rejects; the row's own edit is therefore never persisted while the input field keeps displaying the un-persisted value. The divergence clears silently: because the editor is focused, updateValues skips its re-render, so the UI shows values the document does not contain, and if the user then selects another component (panel rebuild) or undoes, the edit is lost with no warning.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:514-529 (`next = [...workingActions]; next[index] = updated; workingActions = next; onCommit(instanceId, workingActions)`), whole-list revalidation at apps/builder/src/state/builder-state.ts:470-479 (validateComponentInstance validates every action, packages/components/src/validation/validate-instance.ts:131), focus-skip that hides the divergence at apps/builder/src/properties/properties-panel.ts:784-787 and 802-815; panel rebuild on selection change at apps/builder/src/shell/app-shell.ts:309-326.",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        514,
+        524,
+        527,
+        528,
+        784,
+        802
+      ],
+      "recommendedCorrection": "Keep drafts out of the committed payload (see previous finding), and/or filter out rows that fail local validation before calling onCommit; alternatively roll workingActions back to the persisted list when a commit is rejected so the displayed values always mirror the document, and make the error message identify the offending row (e.g. 'Action 2: URL is required')."
+    },
+    {
+      "severity": "medium",
+      "confidence": "likely",
+      "description": "Rows whose persisted event is not among the component's declared event capabilities become uneditable. The event <select> is populated only from `capabilities`, then `eventSelect.value = action.event` is assigned; per HTML semantics a value with no matching <option> leaves selectedIndex -1 and value \"\". applyChanges then reads `eventSelect.value as ActionEvent` (i.e. \"\"), builds an action with an empty event, and the state layer rejects it ('Action \"event\" must be one of: click, hover, focus') for every subsequent edit of that row, so the user cannot fix URL/target for it at all. This is reachable: validateActions only checks the global event set, not the definition's events, so non-declared events can legitimately exist in a document (the new state test itself adds a `focus` action to a Card that declares only `click`).",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:429-443 (options from capabilities only, `eventSelect.value = action.event`), read-back at line 487, rejection via packages/core/src/validation/validate-action.ts:125-130; Card declares only 'click' (packages/core/src/definitions/sample-definitions.ts:10-16) while apps/builder/src/state/__tests__/builder-state-actions.test.ts:384-414 persists a 'focus' action on that Card.",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        429,
+        433,
+        443,
+        487
+      ],
+      "recommendedCorrection": "When `action.event` is not present in the capabilities list, append a synthetic option for it (labelled as unsupported, e.g. 'focus (not supported by this component)') before setting `eventSelect.value`, or disable the row's edit controls with an explicit message, so the value never collapses to an empty string."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "URL validation rules diverge between the editor, the shared core validator and the runtime executor, and the logic is duplicated instead of reused. The editor hand-rolls a blocklist (javascript/data/vbscript/file), matching core, but the executor enforces an allowlist (http/https/mailto/tel only). Consequently the editor accepts and persists URLs such as ftp://…, chrome-extension://… or unknown custom schemes that the runtime will silently refuse to navigate, so users save actions that can never fire. The copy-pasted scheme regex/blocklist in the panel is also a maintenance hazard: three places must now be kept in sync, and core already exports the reusable validateActions.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:491-510 (duplicated /^([a-z][a-z0-9+.-]*):/i + blocklist) vs packages/renderer/src/action/execute-action.ts:28-33 ALLOWED_URL_SCHEMES and packages/core/src/validation/validate-action.ts:33-38 BLOCKED_URL_SCHEMES; validateActions is already exported (packages/core/src/index.ts:33).",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        491,
+        496,
+        500,
+        505,
+        510
+      ],
+      "recommendedCorrection": "Replace the inline checks with a call to `validateActions([candidate], path, [])` from @visual-ui/core and render the returned issues into rowError, and align the shared scheme policy with the executor's allowlist (or explicitly document that editor/core use a blocklist) so what the editor accepts is what the runtime executes."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "Focused tests do not cover the persistence/refresh contract the task requires. The editor test never uses the returned PropertiesPanelApi, so `updateValues` -> `actionEditor.render(...)` (undo/redo reflection) and the `isActionEditorFocused` guard are entirely untested, and no test wires the panel to a real BuilderState, so the 'Add Action commits an invalid list' and 'draft row blocks other edits' behaviours above are not caught (the mock handler accepts everything). The stated expectations 'add/edit/remove, invalid URL, undo/redo and selected component' are met only for the mocked commit callback.",
+      "evidence": "apps/builder/src/properties/__tests__/action-editor.test.ts:331-735 (no `updateValues` call, no BuilderState import; every renderPropertiesPanel call passes a no-op/collecting 6th argument), untested code at apps/builder/src/properties/properties-panel.ts:781-787 and 802-815.",
+      "files": [
+        "apps/builder/src/properties/__tests__/action-editor.test.ts"
+      ],
+      "lineNumbers": [
+        331,
+        413,
+        439,
+        711
+      ],
+      "recommendedCorrection": "Add tests that (a) build the panel over a real createBuilderState + registry, click Add Action, and assert the document still has no persisted action; (b) capture the api, call `api.updateValues(instanceWithNewActions)` and assert rows are re-rendered, plus a variant with document.activeElement inside the editor asserting the render is skipped; (c) assert undo/redo round-trips surface in the rendered rows; (d) assert editing row A while an unfilled row B exists does not silently persist a divergent value."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "The two new focused test files are not registered in the builder package's `test` script, so they will not be executed by `npm test` (the script is an explicit `&&` chain of individual files). Several pre-existing files are likewise missing, but the newly added ones still need wiring so focused verification of this task is reproducible.",
+      "evidence": "apps/builder/package.json:11 (chain lists properties-panel.test.ts but neither src/properties/__tests__/action-editor.test.ts nor src/state/__tests__/builder-state-actions.test.ts); verification section of the review request reports 'no verification commands were configured for this task'.",
+      "files": [
+        "apps/builder/package.json"
+      ],
+      "lineNumbers": [
+        11
+      ],
+      "recommendedCorrection": "Append `&& node --experimental-strip-types src/state/__tests__/builder-state-actions.test.ts && node --experimental-strip-types src/properties/__tests__/action-editor.test.ts` to the test script (matching the existing convention)."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "The action type is not selectable. The requirement asks for 'Select event, navigate action, URL, same/new tab', but the action type is rendered as a static <span>Navigate</span> and `type: \"navigate\"` is hardcoded in every committed action. Defensible today (ComponentAction is a single-member union), but it means the section is not fully metadata-driven for action types and the requirement is only partially satisfied.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:445-448 (typeSpan), 514-522 (hardcoded `type: \"navigate\"`); packages/core/src/types/action.ts:70 (`export type ComponentAction = NavigateAction`).",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        445,
+        446,
+        447,
+        514,
+        517
+      ],
+      "recommendedCorrection": "Either note explicitly in the code/PR that a type selector is deferred until a second action type exists, or render a disabled <select> with the available action types so the control is metadata-driven and the requirement's wording is met."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "Two small API/immutability hygiene issues on the new paths: (1) `updateInstanceActions` stores the caller's mutable array directly on the instance and types it as `ComponentAction[]`, so the document keeps a live alias to the editor's `workingActions` array — it is safe only because the editor happens to reassign rather than mutate, unlike `updateInstanceProperties`, which copies; (2) `ActionEditorState.render(actions, capabilities)` ignores its second parameter (`_capabilities`), so `updateValues` passes freshly-computed capabilities that are silently discarded.",
+      "evidence": "apps/builder/src/state/builder-state.ts:152-156 and 470-473 (`const updatedInstance = { ...target, actions }`); apps/builder/src/properties/properties-panel.ts:359-362, 395-398 (`render(actions, _capabilities)`) vs the call at 784-787.",
+      "files": [
+        "apps/builder/src/state/builder-state.ts",
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        152,
+        470,
+        472,
+        359,
+        395,
+        397,
+        786
+      ],
+      "recommendedCorrection": "Change the parameter to `readonly ComponentAction[]` and persist a defensive copy (`actions: [...actions]`); drop the unused capabilities parameter from the render signature (capabilities are already closed over) or use it when building the event select."
+    },
+    {
+      "severity": "low",
+      "confidence": "likely",
+      "description": "Row rendering dereferences `(action as NavigateAction).config.url` / `.config.target` without a guard. A malformed action without `config` (possible in documents admitted via `addRootInstance`, which deliberately does not validate) throws a TypeError inside renderPropertiesPanel, breaking the whole properties panel and the app-shell subscribe cycle rather than showing an actionable error.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:455 and 472; apps/builder/src/state/builder-state.ts:38-40 documents that addRootInstance callers validate, while apps/builder/src/shell/app-shell.ts:410-413 re-runs refreshPropertiesPanel on every document change.",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        455,
+        472
+      ],
+      "recommendedCorrection": "Read defensively, e.g. `const config = (action as NavigateAction).config ?? { url: \"\" }`, so a malformed action renders an editable row with an error instead of crashing the panel."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "Consistent with the pre-existing property-edit path, every keystroke in the URL input fires `input` -> onCommit -> updateInstanceActions -> history.record, so a single URL edit produces one history entry per character (and one full canvas re-render per character). Undo therefore requires many presses. Not a regression introduced here (properties panels already commit on `input`), but it weakens the 'persist through existing undo/redo history' experience for actions, which are typically committed as complete values.",
+      "evidence": "apps/builder/src/properties/properties-panel.ts:532 (`urlInput.addEventListener(\"input\", applyChanges)`); apps/builder/src/state/document-history.ts:80-92 records every distinct document reference; apps/builder/src/shell/app-shell.ts:410-413 re-renders the canvas on each notification.",
+      "files": [
+        "apps/builder/src/properties/properties-panel.ts"
+      ],
+      "lineNumbers": [
+        532
+      ],
+      "recommendedCorrection": "Consider committing navigate actions on `change`/blur (keeping live rowError feedback on `input`), or coalescing history entries per edited field; if left as-is, note the deliberate match with existing property behaviour."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "A generated build artifact (apps/builder/tsconfig.tsbuildinfo) is committed alongside the source changes. It was already tracked before this commit, so the change is consistent with existing repo practice, but it adds noise to diffs and will churn on every typecheck.",
+      "evidence": "Diff hunk `diff --git a/apps/builder/tsconfig.tsbuildinfo` (single-line artifact regenerated with new root ranges) in .orchestrator-review/commit.diff:1803-1811; .orchestrator-review/changed-files.txt:7.",
+      "files": [
+        "apps/builder/tsconfig.tsbuildinfo"
+      ],
+      "lineNumbers": [],
+      "recommendedCorrection": "No action required for this microtask; consider untracking tsconfig.tsbuildinfo (and adding it to .gitignore) in a dedicated housekeeping task rather than inside a feature commit."
+    }
+  ],
+  "executionStatus": "completed",
+  "tokenUsage": {
+    "input": 150,
+    "output": 21392,
+    "reasoning": 0,
+    "cacheRead": 1467400,
+    "cacheWrite": 94868
+  },
+  "reportedCost": 0.052528740000000004
+}

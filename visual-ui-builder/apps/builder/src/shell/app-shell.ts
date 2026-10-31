@@ -339,6 +339,20 @@ export function renderAppShell(
       },
       (instanceId) => {
         state.deleteComponent(instanceId);
+      },
+      (instanceId, actions) => {
+        state.updateInstanceActions(
+          instanceId,
+          actions,
+          builderComponentRegistry
+        );
+      },
+      (instanceId, dataSource) => {
+        state.updateInstanceDataSource(
+          instanceId,
+          dataSource,
+          builderComponentRegistry
+        );
       }
     );
   };

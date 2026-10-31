@@ -40,6 +40,7 @@ class MockElement {
     style = new MockStyle();
     parentNode = null;
     childNodes = [];
+    listeners = new Map();
     constructor(nodeName) {
         this.nodeName = nodeName.toLowerCase();
     }
@@ -59,6 +60,44 @@ class MockElement {
     }
     get children() {
         return this.childNodes;
+    }
+    get firstElementChild() {
+        return this.childNodes[0] ?? null;
+    }
+    addEventListener(type, listener) {
+        const entries = this.listeners.get(type) ?? [];
+        entries.push(listener);
+        this.listeners.set(type, entries);
+    }
+    removeEventListener(type, listener) {
+        const entries = this.listeners.get(type) ?? [];
+        const index = entries.indexOf(listener);
+        if (index !== -1) {
+            entries.splice(index, 1);
+        }
+        this.listeners.set(type, entries);
+    }
+    listenerCount(type) {
+        return (this.listeners.get(type) ?? []).length;
+    }
+    fire(type, event) {
+        for (const listener of this.listeners.get(type) ?? []) {
+            listener(event);
+        }
+    }
+}
+class MockEvent {
+    type;
+    defaultPrevented = false;
+    propagationStopped = false;
+    constructor(type) {
+        this.type = type;
+    }
+    preventDefault() {
+        this.defaultPrevented = true;
+    }
+    stopPropagation() {
+        this.propagationStopped = true;
     }
 }
 function installMockDom() {
@@ -81,6 +120,7 @@ installMockDom();
 const { ComponentRegistry } = await import("@visual-ui/core");
 const { NativeComponentRegistry, registerCard, registerText, registerButton, } = await import("@visual-ui/components");
 const { validateDocumentShape, renderDocument } = await import("../renderer.js");
+const { ActionExecutor } = await import("@visual-ui/renderer");
 function createRegistries() {
     const metadataRegistry = new ComponentRegistry();
     const nativeRegistry = new NativeComponentRegistry();
@@ -487,6 +527,163 @@ test("No partial document is rendered when a nested child is invalid", () => {
     assertEqual(result.elements.length, 0);
     assertEqual(result.errors.length, 1);
     assertEqual(result.errors[0].id, "card-parent");
+});
+// -----------------------------------------------------------------------
+// Focused integration tests: action persistence and independent runtime.
+// -----------------------------------------------------------------------
+class FakeNavigationAdapter {
+    calls = [];
+    navigateTo(url) {
+        this.calls.push({ method: "navigateTo", url });
+    }
+    openInNewWindow(url) {
+        this.calls.push({ method: "openInNewWindow", url });
+    }
+    reset() {
+        this.calls.length = 0;
+    }
+}
+function navigateAction(id, overrides = {}) {
+    return {
+        id,
+        event: "click",
+        type: "navigate",
+        config: { url: "https://example.com", target: "_self" },
+        ...overrides,
+    };
+}
+/**
+ * Renders a document through validateDocumentShape + renderDocument, using a
+ * fake navigation adapter to observe action dispatch without a real browser.
+ */
+function renderWithFakeAdapter(document, mode, adapter = new FakeNavigationAdapter()) {
+    const { metadataRegistry, nativeRegistry } = createRegistries();
+    return {
+        result: renderDocument(document, {
+            metadataRegistry,
+            nativeRegistry,
+            mode,
+            actionExecutor: new ActionExecutor({ navigationAdapter: adapter }),
+        }),
+        adapter,
+    };
+}
+test("Action JSON survives serialize/import/re-render (round-trip)", () => {
+    const document = [
+        {
+            id: "button-1",
+            type: "button",
+            properties: { label: "Go", variant: "primary" },
+            actions: [navigateAction("a1")],
+        },
+    ];
+    // Serialize and re-parse, exactly as a standalone export/import would.
+    const roundTripped = JSON.parse(JSON.stringify(document));
+    // The round-tripped element must still carry the action wiring: clicking
+    // it dispatches navigation through the fake adapter.
+    const adapter = new FakeNavigationAdapter();
+    const { result } = renderWithFakeAdapter(roundTripped, "interactive", adapter);
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const element = result.elements[0];
+    assertEqual(element.listenerCount("click"), 1, "action listener survives round-trip");
+    element.fire("click", new MockEvent("click"));
+    assertEqual(adapter.calls.length, 1, "round-tripped action still dispatches");
+    assertEqual(adapter.calls[0].url, "https://example.com");
+});
+test("Standalone runtime: interactive mode wires navigate action and dispatches", () => {
+    const adapter = new FakeNavigationAdapter();
+    const document = [
+        {
+            id: "button-1",
+            type: "button",
+            properties: { label: "Go", variant: "primary" },
+            actions: [navigateAction("a1")],
+        },
+    ];
+    const { result } = renderWithFakeAdapter(document, "interactive", adapter);
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const element = result.elements[0];
+    assertEqual(element.listenerCount("click"), 1, "interactive mode binds the click listener");
+    element.fire("click", new MockEvent("click"));
+    assertEqual(adapter.calls.length, 1);
+    assertEqual(adapter.calls[0].method, "navigateTo");
+    assertEqual(adapter.calls[0].url, "https://example.com");
+});
+test("Standalone runtime: edit mode does NOT wire action listeners", () => {
+    const adapter = new FakeNavigationAdapter();
+    const document = [
+        {
+            id: "button-1",
+            type: "button",
+            properties: { label: "Go", variant: "primary" },
+            actions: [navigateAction("a1")],
+        },
+    ];
+    const { result } = renderWithFakeAdapter(document, "edit", adapter);
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const element = result.elements[0];
+    assertEqual(element.listenerCount("click"), 0, "edit mode binds no action listeners");
+    element.fire("click", new MockEvent("click"));
+    assertEqual(adapter.calls.length, 0, "no navigation fires in edit mode");
+});
+test("Action JSON round-trip preserves multiple nested actions", () => {
+    const document = [
+        {
+            id: "card-1",
+            type: "card",
+            properties: { title: "Parent" },
+            actions: [navigateAction("card-action", { config: { url: "https://parent.com" } })],
+            children: [
+                {
+                    id: "button-1",
+                    type: "button",
+                    properties: { label: "Child", variant: "primary" },
+                    actions: [navigateAction("button-action", { config: { url: "https://child.com" } })],
+                },
+            ],
+        },
+    ];
+    const roundTripped = JSON.parse(JSON.stringify(document));
+    const adapter = new FakeNavigationAdapter();
+    const { result } = renderWithFakeAdapter(roundTripped, "interactive", adapter);
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const card = result.elements[0];
+    const button = card.firstElementChild;
+    // Both elements have their listeners.
+    assertEqual(card.listenerCount("click"), 1);
+    assertEqual(button.listenerCount("click"), 1);
+    // Click the nested button — only its action fires (event isolation).
+    button.fire("click", new MockEvent("click"));
+    assertEqual(adapter.calls.length, 1);
+    assertEqual(adapter.calls[0].url, "https://child.com");
+});
+test("Standalone runtime: _blank target opens in new window", () => {
+    const adapter = new FakeNavigationAdapter();
+    const document = [
+        {
+            id: "button-1",
+            type: "button",
+            properties: { label: "Open", variant: "primary" },
+            actions: [navigateAction("a1", { config: { url: "https://example.com", target: "_blank" } })],
+        },
+    ];
+    const { result } = renderWithFakeAdapter(document, "interactive", adapter);
+    const element = result.elements[0];
+    element.fire("click", new MockEvent("click"));
+    assertEqual(adapter.calls.length, 1);
+    assertEqual(adapter.calls[0].method, "openInNewWindow");
+    assertEqual(adapter.calls[0].url, "https://example.com");
+});
+test("Standalone runtime does not import builder modules (independence)", () => {
+    const exampleDir = dirname(fileURLToPath(import.meta.url));
+    const rendererSource = readFileSync(join(exampleDir, "../renderer.js"), "utf-8");
+    const mainSource = readFileSync(join(exampleDir, "../main.js"), "utf-8");
+    assertTrue(!rendererSource.includes("@visual-ui/builder"), "renderer.ts must not import builder modules.");
+    assertTrue(!mainSource.includes("@visual-ui/builder"), "main.ts must not import builder modules.");
 });
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;

@@ -1,0 +1,147 @@
+{
+  "taskId": "1.12.9.3",
+  "taskTitle": "Implement shared action executor",
+  "codingProvider": "opencode-go",
+  "codingModel": "longcat-2.0",
+  "reviewerProvider": "opencode-go",
+  "reviewerModel": "qwen3.8-flash",
+  "reviewedCommitSha": "8fc29b83b2494ec21db0e230d525e37ecee517b3",
+  "reviewAttempt": 1,
+  "reviewedAt": "2026-10-29T12:49:29.681Z",
+  "verificationContext": {
+    "exitCode": 0,
+    "commands": []
+  },
+  "reviewSessionId": "ses_1a187b2ae7f0899ff5dc84b25ee",
+  "overallAssessment": "conditional — The shared executor is well structured: injectable NavigationAdapter, browser adapter using location.assign / window.open with noopener,noreferrer, silent fail-safe on unsupported types/targets, edit-mode short circuit, no eval/Function/dynamic code, and a focused test suite with a fake adapter. However, the URL-scheme boundary is bypassable: it only trims LEADING whitespace/control characters before extracting the scheme, so schemes containing embedded tab/newline (e.g. `java\\nscript:` / `java\\tscript:`) are classified as 'relative URLs' and dispatched to location.assign/window.open, where the WHATWG URL parser removes all ASCII tab/newline characters and yields a live `javascript:` navigation. This directly defeats the 'block unsafe URL protocols at the execution boundary / explicit allowlist' requirement and contradicts the module's own docstring, and no test covers it. Recommend fixing before release.",
+  "findings": [
+    {
+      "severity": "high",
+      "confidence": "confirmed",
+      "description": "Scheme allowlist is bypassable via embedded control characters, allowing javascript: navigation through the execution boundary. extractUrlScheme() strips only leading whitespace/control chars and then anchors the regex at ^, so a URL such as \"java\\tscript:alert(1)\" or \"java\\nscript:alert(1)\" produces no scheme match -> isAllowedUrl() takes the 'Relative URL (no absolute scheme) — permitted' branch -> the raw string is handed to navigationAdapter.navigateTo()/openInNewWindow(), i.e. location.assign()/window.open(). Per the WHATWG URL parser, all ASCII tab (\\t), newline (\\n) and carriage return (\\r) characters are removed from the input anywhere in the string before parsing, so the browser resolves the value to a javascript: URL and executes it in the page context (absent CSP). The executor is documented as the last line of defense ('enforces a last-line-of-defense safety boundary') and its own comment claims this class of payload is handled, but it is not. Note the core validator (packages/core/src/validation/validate-action.ts lines 48-59) shares the identical trimming logic, so an action can reach the runtime unsanitized as well.",
+      "evidence": "packages/renderer/src/action/execute-action.ts:44-68 — lines 47-48: \"Leading whitespace and control characters are stripped first to defeat scheme obfuscation (e.g. `java\\nscript:`)\"; line 51: `const trimmed = url.replace(/^[\\s\\u0000-\\u001f]+/, \"\");` (leading only); line 52: `/^([a-z][a-z0-9+.-]*):/i` (anchored, so an internal control char makes the match fail); lines 59-61: `if (scheme === null) { return true; }` (unknown scheme treated as relative and permitted); lines 185-189 dispatch the untouched `url`. Test coverage only uses leading whitespace: execute-action.test.ts lines 288-311 (\"  javascript:alert(1)\", \"\\tjavascript:alert(1)\").",
+      "files": [
+        "packages/renderer/src/action/execute-action.ts",
+        "packages/renderer/src/__tests__/execute-action.test.ts"
+      ],
+      "lineNumbers": [
+        47,
+        48,
+        51,
+        52,
+        59,
+        60,
+        61,
+        185,
+        188
+      ],
+      "recommendedCorrection": "Normalize the whole value before scheme extraction instead of just its prefix: remove all ASCII tab/newline/CR/form-feed characters (e.g. `url.replace(/[\\t\\n\\r\\f]/g, \"\")`) and/or reject outright any URL containing a control character (`/[\\u0000-\\u001f\\u007f]/.test(url)`), then apply the allowlist to the normalized string. Also apply the trim/removal to the value actually dispatched (or reject rather than pass through) so the adapter never receives a payload whose parsed scheme differs from the checked one. Add focused tests for the exact payloads the comment promises to block: `\"java\\nscript:alert(1)\"`, `\"java\\tscript:alert(1)\"`, `\"java\\rscript:alert(1)\"`, `\"j\\ta\\tv\\ta\\ts\\tc\\t:\\tap(1)\"`, `\"blob:\"`, an unknown scheme such as `\"ftp://host\"` and `\"chrome://settings\"`, and a non-string `url` (number/null). Fix the module docstring at lines 47-48 until the behavior matches it; the same hardening should be mirrored in packages/core/src/validation/validate-action.ts."
+    },
+    {
+      "severity": "medium",
+      "confidence": "confirmed",
+      "description": "The browser adapter's security-critical behavior (window.open features string) has no focused test, even though the task explicitly calls for noopener/noreferrer safeguards. The test suite substitutes only the FakeNavigationAdapter, so a regression that drops \"noopener,noreferrer\" (or swaps location.assign for location.replace) in BrowserNavigationAdapter would still pass every test in this commit.",
+      "evidence": "packages/renderer/src/action/navigation-adapter.ts:35-41 (`location.assign`, `open(url, \"_blank\", \"noopener,noreferrer\")`) vs packages/renderer/src/__tests__/execute-action.test.ts, whose only adapter is `class FakeNavigationAdapter implements NavigationAdapter` (diff lines ~66-80); no test imports or exercises BrowserNavigationAdapter, and packages/renderer/package.json:20 runs only execute-action.test.js.",
+      "files": [
+        "packages/renderer/src/action/navigation-adapter.ts",
+        "packages/renderer/src/__tests__/execute-action.test.ts"
+      ],
+      "lineNumbers": [
+        31,
+        36,
+        40
+      ],
+      "recommendedCorrection": "Add 2-3 tests that construct BrowserNavigationAdapter with a stub Window object (`new BrowserNavigationAdapter({ location: { assign(){} }, open(){} } as unknown as Window)`), record the arguments, and assert `navigateTo` calls location.assign with the URL and `openInNewWindow` calls open with `(\"_blank\", \"noopener,noreferrer\")`. This keeps the browser path testable per the 'injected navigation adapter for testability' requirement."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "URL-safety and target policy is duplicated between core validation and the renderer executor with divergent semantics (core uses a blocklist, executor uses an allowlist), creating a divergence/drift hazard. Three symbols are copy-pasted verbatim: extractUrlScheme, BLOCKED_URL_SCHEMES and the target allowlist. If one list is later extended (a new task adding action types or schemes) the other silently stays stale, and the blocklist-vs-allowlist mismatch means the two boundaries can disagree about which URLs are acceptable.",
+      "evidence": "packages/renderer/src/action/execute-action.ts:28-41, 44-54, 78 vs packages/core/src/validation/validate-action.ts:26, 33-38, 48-53 — `extractUrlScheme` bodies are byte-identical (modulo trailing commas) and both BLOCKED_URL_SCHEMES arrays list javascript/data/vbscript/file. Core's `isBlockedUrl` (validate-action.ts:56-59) returns only on blocked schemes, while the executor's `isAllowedUrl` (execute-action.ts:57-68) additionally requires membership in ALLOWED_URL_SCHEMES.",
+      "files": [
+        "packages/renderer/src/action/execute-action.ts",
+        "packages/core/src/validation/validate-action.ts"
+      ],
+      "lineNumbers": [
+        28,
+        36,
+        44,
+        78
+      ],
+      "recommendedCorrection": "Keep the single source of truth in @visual-ui/core: export the allowlist and a normalized scheme checker (e.g. `isSafeNavigateUrl(url)` / `isAllowedNavigateTarget(target)`, already conceptually present) from core/index.ts and have the executor call it at the boundary. This preserves the 'block at execution boundary' contract while removing the drift risk; it is a small refactor within this task's scope rather than unrelated cleanup."
+    },
+    {
+      "severity": "low",
+      "confidence": "likely",
+      "description": "URLs with embedded credentials pass the boundary. The requirement states the dispatch path must be free of 'embedded credentials', yet the executor validates only the scheme, so an allowlisted absolute URL carrying a userinfo component (https://user:pass@target.example) is dispatched verbatim to location.assign/window.open. That leaks the credential pair into the navigation request and is a well-known address-bar phishing trick, and it is the only listed requirement with no corresponding check or test.",
+      "evidence": "packages/renderer/src/action/execute-action.ts:57-68 and 176-189: the checks are `typeof url === \"string\"`, non-empty, and `isAllowedUrl(url)` (scheme only); `config.url` is then forwarded unchanged. No test in packages/renderer/src/__tests__/execute-action.test.ts uses a URL containing `@`.",
+      "files": [
+        "packages/renderer/src/action/execute-action.ts",
+        "packages/renderer/src/__tests__/execute-action.test.ts"
+      ],
+      "lineNumbers": [
+        57,
+        58,
+        176,
+        181,
+        186,
+        188
+      ],
+      "recommendedCorrection": "For absolute http/https URLs, reject values whose authority contains a userinfo component (e.g. `/^[a-z][a-z0-9+.-]*:\\/\\/[^\\/?#]*@/i.test(url)` -> return / no-op after the scheme check), and add a focused test asserting `\"https://user:pass@example.com\"` does not reach the adapter. State the policy in the module's safety-contract doc comment."
+    },
+    {
+      "severity": "low",
+      "confidence": "confirmed",
+      "description": "The package's aggregate `test` script no longer runs every renderer test: the new executor suite is reachable only through the additional `test:execute-action` script, so `npm test --workspace=@visual-ui/renderer` (the conventional entry point) silently skips the commit's own verification suite.",
+      "evidence": "packages/renderer/package.json:19-20 — `\"test\": \"node dist/__tests__/render-component.test.js\"` is unchanged, with `\"test:execute-action\": \"node dist/__tests__/execute-action.test.js\"` appended. The root package.json (lines 11-18) defines no shared `test` task, so the package script is the runner of record.",
+      "files": [
+        "packages/renderer/package.json"
+      ],
+      "lineNumbers": [
+        19,
+        20
+      ],
+      "recommendedCorrection": "Make `test` run both suites (e.g. `\"test\": \"node dist/__tests__/render-component.test.js && node dist/__tests__/execute-action.test.js\"`) and keep the per-file aliases for focused runs, so a full package test run includes the executor tests."
+    },
+    {
+      "severity": "note",
+      "confidence": "likely",
+      "description": "Event filtering is intentionally out of scope but the API shape makes the contract implicit. `execute()` accepts the event context as `_event` and never inspects `action.event`, and there is no helper that selects the actions bound to a given event type; a caller that passes an instance's whole action list for every DOM event would navigate on hover/focus/click alike. Since the wiring task is later, this is fine for this commit, but the omission should be documented on the method so the integrator does not assume filtering.",
+      "evidence": "packages/renderer/src/action/execute-action.ts:143-163 — signature `execute(action, _event, _element)`; the doc comment at lines 139-141 says the event is 'unused by current action types but part of the extensibility contract' but does not state that the caller must match `action.event`. packages/renderer/src/dom/render-component.ts contains no action/event binding yet (correctly deferred).",
+      "files": [
+        "packages/renderer/src/action/execute-action.ts"
+      ],
+      "lineNumbers": [
+        139,
+        141,
+        143,
+        157
+      ],
+      "recommendedCorrection": "Add a JSDoc line to `execute` stating that filtering by `ComponentAction.event` is the caller's responsibility (or add an optional `dispatch(actions, eventName, event, element)` convenience in the later wiring task rather than silently overloading `execute`)."
+    },
+    {
+      "severity": "note",
+      "confidence": "confirmed",
+      "description": "Edit mode is a static constructor flag, which cannot track a builder that toggles edit/preview mode after the executor has been created; the executor also cannot express a per-render mode override. Acceptable for this microtask (no builder code exists yet — grep for editMode/isEditMode in apps/builder/src returns no matches), but the injected-adapter pattern used for navigation suggests a predicate would integrate more cleanly.",
+      "evidence": "packages/renderer/src/action/execute-action.ts:92-123 — `readonly isEditMode?: boolean` stored once in the constructor (`options.isEditMode ?? false`) and read at line 149; no setter or callback.",
+      "files": [
+        "packages/renderer/src/action/execute-action.ts"
+      ],
+      "lineNumbers": [
+        103,
+        122,
+        149
+      ],
+      "recommendedCorrection": "Consider widening `ActionExecutorOptions.isEditMode` to `boolean | (() => boolean)` (defaulting to false, still checked first in `execute`) so the future builder wiring can reuse one executor instance; keep the existing boolean form so current tests remain valid."
+    }
+  ],
+  "executionStatus": "completed",
+  "tokenUsage": {
+    "input": 60,
+    "output": 5909,
+    "reasoning": 0,
+    "cacheRead": 136113,
+    "cacheWrite": 27336
+  },
+  "reportedCost": 0.010431238
+}

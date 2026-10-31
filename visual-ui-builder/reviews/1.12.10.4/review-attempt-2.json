@@ -1,0 +1,28 @@
+{
+  "taskId": "1.12.10.4",
+  "taskTitle": "Add data source runtime lifecycle",
+  "codingProvider": "opencode-go",
+  "codingModel": "longcat-2.0",
+  "reviewerProvider": "opencode-go",
+  "reviewerModel": "qwen3.8-flash",
+  "reviewedCommitSha": "a494904089d39450a9b93c74f79ab46f0217bb4c",
+  "reviewAttempt": 2,
+  "reviewedAt": "2026-10-29T15:19:57.777Z",
+  "verificationContext": {
+    "exitCode": 0,
+    "commands": []
+  },
+  "reviewSessionId": "ses_1a18822673aea53de6c2595b93a",
+  "overallAssessment": "review_failed",
+  "findings": [],
+  "executionStatus": "failed",
+  "error": "OpenCode timed out",
+  "tokenUsage": {
+    "input": 48,
+    "output": 1037,
+    "reasoning": 0,
+    "cacheRead": 161705,
+    "cacheWrite": 34945
+  },
+  "reportedCost": 0.01007087
+}

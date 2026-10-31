@@ -1,0 +1,110 @@
+# Review: 1.12.10.5 — Add Data Source Editor configuration UI
+
+- **Reviewed commit:** cdef2f8cb79d0298f7b2e9f0d2e5d62d6aa2367a
+- **Overall assessment:** conditional - The Data Source editor is implemented correctly and meets the stated requirements: capability gating via the new `ComponentDefinition.dataBinding` metadata (Card only), static vs REST GET switching, endpoint/responsePath/label-value mapping/mount trigger fields, two-layer validation before saving, a persistent CORS/auth notice, immutable state mutation through `updateInstanceDataSource` that participates in undo/redo and JSON serialization, no network activity in the edit canvas (interactive-mode-only DataSourceRuntime), and no Dropdown component. Remaining concerns are integration/test-hygiene level: the new focused test file is not registered in any runner script, the editor never commits `undefined` despite its own and the state API's documented contract (so "static" permanently adds a `dataSource` key), the editor's local validation is only a partial duplicate of core validation so state-rejected drafts linger in the working copy, and configured data sources produce no `instance.bindings`, leaving them inert for the existing runtime.
+- **Execution status:** completed
+- **Review attempt:** 1
+- **Reviewed at:** 2026-10-30T00:17:51.044Z
+- **Coding model:** opencode-go / longcat-2.0 (default variant)
+- **Reviewer model:** opencode-go / qwen3.8-flash (default variant)
+- **Review session:** ses_1a18a20aa9aa5f056ad041f13bb
+- **Token usage:** input 258, output 31406, reasoning 0, cache 3126199, total —
+- **Reported cost:** $0.086873
+
+## Verification context
+
+- exit code: 0
+- timed out: no
+- commands that passed: none configured
+
+## Findings
+
+### 1. MEDIUM (confirmed) — The new focused test file is not wired into any test runner, so it is never executed automatically. The builder's `test` script enumerates test files explicitly and does not include `src/properties/__tests__/data-source-editor.test.ts`, and the root package.json has no aggregator script for the builder workspace. The task's expected focused tests therefore do not run as part of the project's test command.
+
+**Evidence:** apps/builder/package.json line 11 lists: drag-payload, drop-position, component-palette(+interaction), builder-state, component-instance-factory, builder-canvas, properties-panel, builder-registry — no data-source-editor entry. grep for "data-source-editor" across all package.json files returned no matches. Root package.json (lines 11-18) has no builder test script. Verification log states "no verification commands were configured for this task".
+
+**Files:** apps/builder/package.json, apps/builder/src/properties/__tests__/data-source-editor.test.ts
+
+**Lines:** 11
+
+**Recommended correction:** Append `&& node --experimental-strip-types src/properties/__tests__/data-source-editor.test.ts` to the builder `test` script (matching the existing style). Note the same gap pre-exists for action-editor.test.ts and several state/shell tests; consider a glob-based runner so future focused tests are picked up automatically.
+
+### 2. LOW (confirmed) — The editor never emits `undefined`, contradicting its own documented contract and the state API's documented clearing mechanism, and leaving a stray `dataSource` in serialized JSON. `createDataSourceEditor`'s doc says onCommit fires "with the full replacement data source (or `undefined` for static)", and `BuilderState.updateInstanceDataSource` documents "Pass `undefined` to clear the data source (revert to static rendering)", but selecting Static commits `{ type: "static" }`. As a result an instance that previously had no `dataSource` key permanently gains `"dataSource": {"type":"static"}` in exported JSON (plus an extra undo step) merely from touching the type select, and the `undefined` branch of the handler/state API is unreachable from the UI.
+
+**Evidence:** apps/builder/src/properties/properties-panel.ts lines 895-896 (doc), lines 986-990 (`setWorkingAndRender({ type: "static" }); onCommit(instanceId, { type: "static" });`); apps/builder/src/state/builder-state.ts line 168 (`Pass undefined to clear the data source`); test "Switching to static after setting REST clears the data source" actually asserts `last?.type === "static"`, not clearing — name and behaviour disagree (data-source-editor.test.ts lines 409-443).
+
+**Files:** apps/builder/src/properties/properties-panel.ts, apps/builder/src/state/builder-state.ts
+
+**Lines:** 895, 986, 168
+
+**Recommended correction:** Pick one representation and align code, docs and test names: either commit `undefined` when Static is chosen (so legacy-clean instances are not polluted) or keep `{type:"static"}` and correct the two doc comments plus the test name. If `{type:"static"}` is intentional, consider omitting the commit when the instance already has no data source and the user re-selects Static.
+
+### 3. LOW (confirmed) — The editor's pre-save validation only duplicates a subset of core validation, and rejected drafts are adopted into the editor's working copy. `commit()` checks only non-empty URL and safe paths, while the URL-scheme blocklist (javascript/data/vbscript/file) and secret-query-parameter rejection live exclusively in core `validate-rest-data-source`. Because `commit()` assigns `workingDataSource = next` before calling `onCommit`, a draft that the state layer rejects (e.g. `?token=...` URL) is retained as the editor's base for all subsequent field edits, so unrelated later commits keep resending the rejected URL and the visible inputs can diverge from persisted state until a refresh happens while nothing in the editor is focused.
+
+**Evidence:** apps/builder/src/properties/properties-panel.ts lines 1166-1194 (`commit()` local checks: url empty, responsePath/mapping paths; then `setValidation(""); workingDataSource = next; onCommit(instanceId, next);`); packages/core/src/validation/validate-data-source.ts lines 39-91 and 196-215 (scheme + secret query checks only at the state layer); the caller only surfaces the thrown message and does not roll back the working copy (properties-panel.ts lines 684-697).
+
+**Files:** apps/builder/src/properties/properties-panel.ts, packages/core/src/validation/validate-data-source.ts
+
+**Lines:** 1166, 1191, 196
+
+**Recommended correction:** Use the existing core helper `validateDataSourceContracts(next, undefined, "", [])` inside `commit()` as the single source of truth (surfacing its messages), and only assign `workingDataSource = next` after a successful commit (or restore the previous value in the buildForm catch handler).
+
+### 4. LOW (likely) — A configured REST data source has no effect end-to-end because the editor never creates an `instance.bindings` entry for the declared capability target. The capability gate reads `definition.dataBinding` (e.g. `["options"]`), but the persisted change is only `instance.dataSource`; the existing runtime applies resolved data exclusively by iterating `instance.bindings` and looking up a registered adapter, so an instance edited through this UI would fetch and then bind nothing.
+
+**Evidence:** apps/builder/src/properties/properties-panel.ts lines 677-699 (renders when `definition.dataBinding` non-empty) and lines 1166-1194 (commits only the DataSource); packages/renderer/src/data-source/data-source-runtime.ts lines 266-298 (`const bindingList = bindings ?? []; for (const binding of bindingList) { ... adapter(element, data) }`); packages/core/src/types/component-instance.ts lines 40-49 (bindings are what name the render slot).
+
+**Files:** apps/builder/src/properties/properties-panel.ts, packages/renderer/src/data-source/data-source-runtime.ts
+
+**Lines:** 678, 1193, 277
+
+**Recommended correction:** If binding creation belongs to a later task, note the dependency explicitly (the editor UI is currently not observable end-to-end). Otherwise, when the user configures a REST source, also emit a `Binding` for the single declared `dataBinding` target (e.g. `{ target: "options" }`) so the existing runtime path can apply the mapped records.
+
+### 5. LOW (likely) — Every keystroke in the endpoint/response-path/mapping inputs creates a full document snapshot, giving one undo step per character and accelerating eviction of older history. Each `input` event that passes validation runs `updateInstanceDataSource` → `recordHistory`, and history is capped at 50 past snapshots, so typing a long endpoint URL consumes a large share of the undo budget.
+
+**Evidence:** apps/builder/src/properties/properties-panel.ts lines 1024-1028 and 1046-1054 (`addEventListener("input", ...)` → `commit(next)`); apps/builder/src/state/builder-state.ts lines 528-531 (`recordHistory(nextDocument)`); apps/builder/src/state/builder-state.ts / document-history.ts lines 4 and 85-91 (`MAX_PAST_HISTORY = 50`, oldest dropped). The same pattern pre-exists for string/number property fields and the action editor, so this is consistent but amplified.
+
+**Files:** apps/builder/src/properties/properties-panel.ts, apps/builder/src/state/document-history.ts
+
+**Lines:** 1024, 1046, 4
+
+**Recommended correction:** Commit REST text fields on `change`/blur (or debounce/coalesce history entries for the same field) so one edit equals one undo step. No focused test asserts undo granularity for the new fields.
+
+### 6. NOTE (confirmed) — Two focused-test gaps and one unrepresentative interaction: (a) the "invalid config" tests only exercise editor-local validation, so the state-layer rejection path (buildForm try/catch surfacing `Invalid data source update: …` while leaving the document unchanged) is untested; (b) `isDataSourceEditorFocused` is never exercised because the mock `document.activeElement` is always `null` and `MockElement` has no `parentElement`, so the undo/redo-vs-editing protection branch is unverified; (c) in "Switching to static after setting REST clears the data source" the `change` event is dispatched on the stale, already-detached `<select>` captured before the editor re-rendered, so the test does not reflect the control the user would actually interact with.
+
+**Evidence:** apps/builder/src/properties/__tests__/data-source-editor.test.ts lines 173-178 (`document = { createElement, activeElement: null }`), lines 427-442 (old `typeSelect` reused after `setWorkingAndRender` rebuilt the DOM), lines 589-658 (invalid-config tests use no-op handlers and never assert the caught state error); properties-panel.ts lines 840-842 and 1207-1220 (the untested focus guard).
+
+**Files:** apps/builder/src/properties/__tests__/data-source-editor.test.ts, apps/builder/src/properties/properties-panel.ts
+
+**Lines:** 173, 427, 589, 1207
+
+**Recommended correction:** Add a test that wires `onDataSourceChange` to a real `createBuilderState` + registry, types a `javascript:`/`?token=` URL, asserts the inline message appears and `state.getDocument()` is unchanged; add a test that sets `document.activeElement` to an editor control (with `parentElement` support in the mock) to prove `updateValues` skips the refresh while editing; re-query the type select from the container after each re-render.
+
+### 7. NOTE (confirmed) — Minor markup/style inconsistencies in the new section: the outer editor container class `properties-data-source` has no CSS rule (only `properties-datasource-*` descendants are styled), the data-source separator reuses the action-specific class `properties-action-separator`, the CORS/auth notice is rendered even when Static is selected, and the Load-trigger select contains only the single `mount` option (so the control cannot actually change anything).
+
+**Evidence:** properties-panel.ts line 910 (`container.className = "properties-data-source"`) versus properties-panel.css lines 979-1017 (rules for `.properties-datasource-section|heading|rest|type|notice|validation-message` only); line 680-682 (`separator.className = "properties-action-separator"`); lines 951-955 (notice appended unconditionally); lines 886-888 (`LOAD_TRIGGERS` = single entry) with lines 1110-1116.
+
+**Files:** apps/builder/src/properties/properties-panel.ts, apps/builder/src/properties/properties-panel.css
+
+**Lines:** 910, 680, 955, 1110
+
+**Recommended correction:** Add a `.properties-data-source` rule (or rename the container to `properties-datasource`), introduce a dedicated `properties-datasource-separator` class, and consider hiding the notice when the source is static. Cosmetic only.
+
+### 8. NOTE (confirmed) — `dataBinding: ["options"]` was attached to the Card definition, which is a generic content container rather than an options/rows consumer; it appears to exist to give the new UI a capability-bearing sample component ahead of the Dropdown task. The editor also renders options-specific "Label field path"/"Value field path" fields for any declared target, including a future `rows` target.
+
+**Evidence:** packages/core/src/definitions/sample-definitions.ts line 10 (`dataBinding: ["options"]` on cardDefinition); properties-panel.ts lines 1058-1097 (label/value mapping fields regardless of the target list); packages/core/src/types/binding.ts lines 21-25 (targets `options` | `rows`).
+
+**Files:** packages/core/src/definitions/sample-definitions.ts, apps/builder/src/properties/properties-panel.ts
+
+**Lines:** 10, 1058
+
+**Recommended correction:** Keep the sample metadata as test scaffolding but document it, and when a Table/rows capability arrives, derive the mapping controls from the declared target(s) instead of hardcoding label/value.
+
+### 9. NOTE (confirmed) — Generated TypeScript build caches were committed alongside the source change, adding large opaque diffs to the commit.
+
+**Evidence:** changed-files.txt lines 6-7, 9, 14-16 (`apps/builder/tsconfig.tsbuildinfo`, `examples/json-renderer/dist-test/tsconfig.tsbuildinfo`, `packages/components|core|renderer/tsconfig.tsbuildinfo`); .gitignore lines 1-8 ignore `node_modules`, `dist`, `build` but not `*.tsbuildinfo`, and these files were already tracked (mode `M`).
+
+**Files:** .gitignore, apps/builder/tsconfig.tsbuildinfo, packages/core/tsconfig.tsbuildinfo
+
+**Lines:** 1
+
+**Recommended correction:** No action required by this task; if the orchestrator agrees, add `*.tsbuildinfo` (and `examples/json-renderer/dist-test`) to .gitignore and untrack them in a separate housekeeping change to reduce commit noise.

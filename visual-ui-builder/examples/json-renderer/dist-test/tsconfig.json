@@ -5,8 +5,8 @@
         "rootDir": ".",
         "composite": true
     },
-    "include": ["./**/*.ts", "./**/*.json"],
-    "exclude": ["dist", "node_modules"],
+    "include": ["./**/*.ts", "./*.json"],
+    "exclude": ["dist", "dist-test", "node_modules"],
     "references": [
         { "path": "../../packages/core" },
         { "path": "../../packages/components" },

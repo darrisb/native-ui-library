@@ -1,0 +1,68 @@
+# Review: 1.12.9.2 — Declare supported events in component metadata
+
+- **Reviewed commit:** fa6dd20b4c71a6468b022f3aa54cdc3f951d2849
+- **Overall assessment:** conditional - The metadata schema is implemented correctly and matches the requirements: a new optional, extensible `events` list on `ComponentDefinition` (`ComponentEventCapability`), Button declares unconditional `click`, Card declares `click` with `requiresAction: true`, Text declares none, and the data flows to the editor through the registry (`ComponentRegistry` stores whole definitions; the builder palette passes definitions through unchanged, so no per-type hardcoded UI is needed). Native Web Components, the renderer, and action semantics were untouched, and no new components were added. However, the new focused test file is not wired to any runnable script (packages/core has no `test` script, and no verification commands were configured), so the tests were never actually executed, and the 'unsupported events' coverage is only partial.
+- **Execution status:** completed
+- **Review attempt:** 1
+- **Reviewed at:** 2026-10-29T12:44:20.728Z
+- **Coding model:** opencode-go / longcat-2.0 (default variant)
+- **Reviewer model:** opencode-go / qwen3.8-flash (default variant)
+- **Review session:** ses_1a187ac3a6af148687c703016a6
+- **Token usage:** input 108, output 12274, reasoning 0, cache 782587, total —
+- **Reported cost:** $0.031348
+
+## Verification context
+
+- exit code: 0
+- timed out: no
+- commands that passed: none configured
+
+## Findings
+
+### 1. MEDIUM (confirmed) — The new focused test file is not executable by any project script, so the metadata assertions were never run. `packages/core/package.json` only declares `build` and `typecheck`; unlike the sibling packages, there is no `test` entry that runs the compiled test, and the root `package.json` has no target that executes core tests. The task's verification step also reported 'no verification commands were configured', so the tests exist only as unverified code.
+
+**Evidence:** packages/core/package.json lines 16-19 (scripts: only `build`, `typecheck`); contrast with packages/renderer/package.json line 19 (`"test": "node dist/__tests__/render-component.test.js"`) and packages/components/package.json line 23 (runs compiled `dist/**/__tests__/*.test.js`). New file packages/core/src/__tests__/event-metadata.test.ts is compiled (it now appears in packages/core/tsconfig.tsbuildinfo fileNames as `./src/__tests__/event-metadata.test.ts`) but nothing invokes `dist/__tests__/event-metadata.test.js`. Root package.json scripts (lines 11-18) contain no core test task.
+
+**Files:** packages/core/package.json, packages/core/src/__tests__/event-metadata.test.ts
+
+**Lines:** 16, 17, 18, 19
+
+**Recommended correction:** Add a `test` script to packages/core/package.json that builds and runs the compiled tests, e.g. `"test": "tsc --build && node dist/__tests__/action-contract.test.js && node dist/__tests__/event-metadata.test.js"` (matching the components/renderer convention), and optionally a root `test` task that fans out to the workspaces, so the declared requirements (Button click, conditional Card click) are actually asserted at verification time.
+
+### 2. LOW (confirmed) — The 'expected focused tests: supported/unsupported events' requirement is only partially covered. Tests assert the presence of `click` on Button/Card, the `requiresAction` flag, and that Text has no events, but there is no negative assertion that Button/Card do not declare the other events permitted by the `ActionEvent` union (`hover`, `focus`), and no test that the derived capability of a Card instance without actions exposes no usable event. The generic-consumption test counts `click` occurrences only, so an accidental `hover` declaration on Card or Button would still pass.
+
+**Evidence:** packages/core/src/__tests__/event-metadata.test.ts lines 65-101 (presence-only assertions), lines 143-160 (filters only for `=== "click"`, never checks the absence of other event names). `ActionEvent` is `"click" | "hover" | "focus"` (packages/core/src/types/action.ts line 15), so the current definitions could declare hover/focus without any test failing.
+
+**Files:** packages/core/src/__tests__/event-metadata.test.ts
+
+**Lines:** 65, 82, 143, 154
+
+**Recommended correction:** Add unsupported-event assertions, e.g. `assertEqual(button.events.some(e => e.event !== "click"), false)` / an equivalent check that Card declares only `click`, and an assertion that no sample definition declares an event outside `ComponentRegistry`-known/`ActionEvent` values, so regressions that widen the declared event set are caught.
+
+### 3. LOW (likely) — The `requiresAction` capability is purely advisory metadata with no runtime or validation support, and the event allow-list is now duplicated in two places. `validateActions` still checks action events against its own hardcoded `ALLOWED_EVENTS = ["click", "hover", "focus"]` and is unaware of per-component capabilities, so an instance can legitimately be given a `hover` action on a Card (whose metadata declares only `click`) and pass validation, silently contradicting the declared capability.
+
+**Evidence:** packages/core/src/validation/validate-action.ts line 23 (`ALLOWED_EVENTS`) and line 125 (`if (!ALLOWED_EVENTS.includes(action.event))`) contain no reference to `ComponentDefinition.events`; packages/core/src/types/component-definition.ts lines 10-23 and 51 define the capability but nothing consumes it yet; `validateComponentInstance` (packages/components/src/validation/validate-instance.ts) validates properties/children only.
+
+**Files:** packages/core/src/types/component-definition.ts, packages/core/src/validation/validate-action.ts
+
+**Lines:** 10, 51, 23, 125
+
+**Recommended correction:** Either (a) note in the JSDoc on `ComponentEventCapability.requiresAction` that validation of instance actions against declared capabilities is a follow-up task, or (b) add a small derived helper such as `getBindableEvents(definition, instance)` that filters out `requiresAction` capabilities when the instance has no actions, so editor consumers (later tasks) cannot accidentally show Card's click unconditionally. This also removes the risk of a third hardcoded event list per consumer.
+
+### 4. NOTE (confirmed) — Five regenerated TypeScript incremental-build artifacts (`tsconfig.tsbuildinfo`) are committed alongside the source change, including one under `examples/json-renderer/dist-test/`. They are environment-specific single-line JSON blobs and dominate the diff (roughly 220k of the ~221k diff characters), which makes review of the actual three-file source change harder. This follows the repository's pre-existing tracking convention, so it is an observation rather than a defect introduced here.
+
+**Evidence:** .orchestrator-review/changed-files.txt lines 1-3 and 8-9 list apps/builder, examples/json-renderer/dist-test, packages/components, packages/core, packages/renderer tsbuildinfo files; each diff hunk is a single full-file replacement (commit.diff lines 5-9, 14-18, 23-27, 310-314, 319-323). The source changes are confined to commit.diff lines 213-305.
+
+**Files:** apps/builder/tsconfig.tsbuildinfo, packages/core/tsconfig.tsbuildinfo, packages/components/tsconfig.tsbuildinfo, packages/renderer/tsconfig.tsbuildinfo, examples/json-renderer/dist-test/tsconfig.tsbuildinfo
+
+**Recommended correction:** No change required for this task (the artifacts were already tracked before the commit). If the orchestrator wants cleaner diffs, consider untracking `**/tsconfig.tsbuildinfo` and adding it to .gitignore in a separate, explicitly authorized housekeeping task.
+
+### 5. NOTE (confirmed) — Requirement conformance summary for the functional items: Card's conditional click is expressed declaratively (`requiresAction: true`) rather than by gating the declaration, which is the correct approach for registry metadata and keeps the schema extensible/serializable; no navigation or click logic was added to the Web Components, and no new components were introduced.
+
+**Evidence:** packages/core/src/definitions/sample-definitions.ts lines 10-16 (Card `click` + `requiresAction: true`) and lines 53-58 (Button `click` only); packages/core/src/types/component-definition.ts lines 44-51 (optional flat `events` list, 'when omitted the component exposes no event bindings'); packages/components/src/card/ui-card.ts contains no click/dispatch/action/event handling (grep returned no matches) and was not modified by the commit; builder consumption path passes definitions unchanged (apps/builder/src/palette/component-palette-data.ts lines 55-64 stores whole `ComponentDefinition` objects; apps/builder/src/registry/builder-registry.ts lines 18-19 registers sample definitions verbatim; ComponentRegistry stores by reference, packages/core/src/registry/component-registry.ts lines 16-21).
+
+**Files:** packages/core/src/definitions/sample-definitions.ts, packages/core/src/types/component-definition.ts, packages/core/src/index.ts
+
+**Lines:** 10, 53, 44, 51
+
+**Recommended correction:** None.
