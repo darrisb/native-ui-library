@@ -1,4 +1,5 @@
 import type { ComponentInstance } from "@visual-ui/core";
+import { parseStaticOptions } from "@visual-ui/core";
 
 type PropertyAdapter = (
   element: HTMLElement,
@@ -59,10 +60,42 @@ const buttonAdapter: PropertyAdapter = (element, properties) => {
   }
 };
 
+const dropdownAdapter: PropertyAdapter = (element, properties) => {
+  if (properties.label !== undefined) {
+    element.setAttribute("label", String(properties.label));
+  }
+
+  if (properties.placeholder !== undefined) {
+    element.setAttribute("placeholder", String(properties.placeholder));
+  }
+
+  if (properties.name !== undefined) {
+    element.setAttribute("name", String(properties.name));
+  }
+
+  if (properties.required === true) {
+    element.setAttribute("required", "");
+  } else if (properties.required === false) {
+    element.removeAttribute("required");
+  }
+
+  if (properties.disabled === true) {
+    element.setAttribute("disabled", "");
+  } else if (properties.disabled === false) {
+    element.removeAttribute("disabled");
+  }
+
+  if (properties.staticOptions !== undefined) {
+    const options = parseStaticOptions(String(properties.staticOptions));
+    element.setAttribute("options", JSON.stringify(options));
+  }
+};
+
 const adapters = new Map<string, PropertyAdapter>([
   ["card", cardAdapter],
   ["text", textAdapter],
   ["button", buttonAdapter],
+  ["dropdown", dropdownAdapter],
 ]);
 
 export function applyComponentProperties(

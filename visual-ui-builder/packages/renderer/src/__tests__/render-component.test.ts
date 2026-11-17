@@ -95,7 +95,7 @@ function installMockDom(): void {
 
   globals.customElements = {
     get: (name: string): object | undefined => {
-      const defined = new Set(["ui-card", "ui-text", "ui-button"]);
+      const defined = new Set(["ui-card", "ui-text", "ui-button", "ui-dropdown"]);
       return defined.has(name) ? {} : undefined;
     },
     define: (): void => {},
@@ -114,6 +114,7 @@ const {
   registerCard,
   registerText,
   registerButton,
+  registerDropdown,
 } = await import("@visual-ui/components");
 const { renderComponent } = await import("../dom/render-component.js");
 
@@ -138,6 +139,7 @@ function createRegistries() {
   registerCard(metadataRegistry, nativeRegistry);
   registerText(metadataRegistry, nativeRegistry);
   registerButton(metadataRegistry, nativeRegistry);
+  registerDropdown(metadataRegistry, nativeRegistry);
   return { metadataRegistry, nativeRegistry };
 }
 
@@ -751,6 +753,117 @@ test("No builder dependency is required to render a Card", () => {
     nativeRegistry,
   });
   assertEqual(element.nodeName, "ui-card");
+});
+
+// -- Dropdown tests --
+
+test("Dropdown renders as ui-dropdown element", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "dropdown-1",
+    type: "dropdown",
+    properties: { label: "Choose", name: "choice" },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-dropdown");
+  assertEqual(element.getAttribute("label"), "Choose");
+  assertEqual(element.getAttribute("name"), "choice");
+});
+
+test("Dropdown staticOptions are parsed into options attribute", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "dropdown-2",
+    type: "dropdown",
+    properties: {
+      label: "Pick one",
+      staticOptions: "a|Alpha\nb|Beta\nc|Gamma",
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-dropdown");
+  const optionsAttr = element.getAttribute("options");
+  assertTrue(optionsAttr !== null, "Expected options attribute to be set.");
+  const parsed = JSON.parse(optionsAttr!);
+  assertEqual(parsed.length, 3);
+  assertEqual(parsed[0].value, "a");
+  assertEqual(parsed[0].label, "Alpha");
+  assertEqual(parsed[1].value, "b");
+  assertEqual(parsed[1].label, "Beta");
+  assertEqual(parsed[2].value, "c");
+  assertEqual(parsed[2].label, "Gamma");
+});
+
+test("Dropdown required and disabled boolean attributes work", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "dropdown-3",
+    type: "dropdown",
+    properties: {
+      label: "Required",
+      required: true,
+      disabled: true,
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.getAttribute("required"), "");
+  assertEqual(element.getAttribute("disabled"), "");
+});
+
+test("Dropdown required false removes required attribute", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "dropdown-4",
+    type: "dropdown",
+    properties: {
+      label: "Optional",
+      required: false,
+      disabled: false,
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.getAttribute("required"), null);
+  assertEqual(element.getAttribute("disabled"), null);
+});
+
+test("Dropdown with children is rejected", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "dropdown-parent",
+    type: "dropdown",
+    properties: { label: "Parent" },
+    children: [
+      {
+        id: "text-child",
+        type: "text",
+        properties: { content: "Child" },
+      },
+    ],
+  };
+  let threw = false;
+  try {
+    renderComponent(instance, { metadataRegistry, nativeRegistry });
+  } catch (error) {
+    threw = true;
+    assertTrue(
+      error instanceof Error && error.message.includes("does not allow children"),
+      `Expected disallow-children error, got: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  assertTrue(threw, "Expected Dropdown with children to throw.");
+});
+
+test("Calling registerDropdown twice does not throw", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerDropdown(metadataRegistry, nativeRegistry);
+  let threw = false;
+  try {
+    registerDropdown(metadataRegistry, nativeRegistry);
+  } catch {
+    threw = true;
+  }
+  assertTrue(!threw, "Expected second registerDropdown call to not throw.");
 });
 
 const passed = results.filter((result) => result.passed).length;
