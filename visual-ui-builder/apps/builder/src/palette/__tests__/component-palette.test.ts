@@ -1,4 +1,4 @@
-import { ComponentRegistry, registerSampleDefinitions } from "@visual-ui/core";
+import { ComponentRegistry, registerSampleDefinitions, dropdownDefinition } from "@visual-ui/core";
 import {
   getPaletteGroups,
   PALETTE_CATEGORIES,
@@ -81,6 +81,18 @@ test("Button appears under Actions", () => {
   assertTrue(
     getComponentNames(actions).includes("Button"),
     `Expected Button in Actions, got: ${getComponentNames(actions).join(", ")}`
+  );
+});
+
+test("Dropdown appears under Forms", () => {
+  const registry = new ComponentRegistry();
+  registerSampleDefinitions(registry);
+  registry.register(dropdownDefinition);
+  const groups = getPaletteGroups(registry);
+  const forms = findGroup(groups, "Forms");
+  assertTrue(
+    getComponentNames(forms).includes("Dropdown"),
+    `Expected Dropdown in Forms, got: ${getComponentNames(forms).join(", ")}`
   );
 });
 

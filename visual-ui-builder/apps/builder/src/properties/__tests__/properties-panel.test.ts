@@ -139,13 +139,14 @@ function installMockDom(): void {
 
 installMockDom();
 
-const { ComponentRegistry, registerSampleDefinitions } = await import(
+const { ComponentRegistry, registerSampleDefinitions, dropdownDefinition } = await import(
   "@visual-ui/core"
 );
 const { renderPropertiesPanel } = await import("../properties-panel.ts");
 
 const registry = new ComponentRegistry();
 registerSampleDefinitions(registry);
+registry.register(dropdownDefinition);
 
 const document = globalThis.document as {
   createElement: (tagName: string) => MockElement;
@@ -746,6 +747,38 @@ test("Preserving existing root-level Card editing", () => {
   titleControl.dispatchEvent({ type: "input" } as unknown as Event);
 
   assertEqual(changedPatch?.["title"], "Updated Root");
+});
+
+test("Dropdown staticOptions renders as a multiline textarea", () => {
+  const container = createContainer();
+  const instance = {
+    id: "dropdown-1",
+    type: "dropdown",
+    properties: {
+      label: "Choose",
+      placeholder: "Select…",
+      name: "choice",
+      required: false,
+      disabled: false,
+      staticOptions: "Option A\nOption B\nOption C",
+    },
+  };
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {}
+  );
+
+  const staticOptionsControl = findControl(container, "dropdown-1", "staticOptions");
+  assertTrue(staticOptionsControl !== undefined, "Static options control should exist.");
+  assertEqual(staticOptionsControl!.nodeName, "TEXTAREA");
+  assertTrue(
+    staticOptionsControl!.className.includes("properties-control--multiline"),
+    "Static options control should use the multiline style."
+  );
+  assertEqual(staticOptionsControl!.value, "Option A\nOption B\nOption C");
 });
 
 const passed = results.filter((result) => result.passed).length;
