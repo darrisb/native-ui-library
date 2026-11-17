@@ -781,6 +781,42 @@ test("Dropdown staticOptions renders as a multiline textarea", () => {
   assertEqual(staticOptionsControl!.value, "Option A\nOption B\nOption C");
 });
 
+test("Editing staticOptions updates the instance", () => {
+  const container = createContainer();
+  const instance = {
+    id: "dropdown-1",
+    type: "dropdown",
+    properties: {
+      label: "Choose",
+      placeholder: "Select…",
+      name: "choice",
+      required: false,
+      disabled: false,
+      staticOptions: "Option A\nOption B",
+    },
+  };
+
+  let changedId: string | null = null;
+  let changedPatch: Record<string, string | number | boolean> | null = null;
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    (id, patch) => {
+      changedId = id;
+      changedPatch = patch;
+    }
+  );
+
+  const staticOptionsControl = findControl(container, "dropdown-1", "staticOptions") as MockElement;
+  staticOptionsControl.value = "Alpha\nBeta\nGamma";
+  staticOptionsControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  assertEqual(changedId, "dropdown-1");
+  assertEqual(changedPatch?.["staticOptions"], "Alpha\nBeta\nGamma");
+});
+
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;
 
