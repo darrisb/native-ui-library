@@ -147,8 +147,7 @@ export const dropdownDefinition: ComponentDefinition = {
 export const sampleDefinitions: readonly ComponentDefinition[] = [
   cardDefinition,
   buttonDefinition,
-  textDefinition,
-  dropdownDefinition
+  textDefinition
 ];
 
 /** Registers all sample definitions on the supplied registry. */
