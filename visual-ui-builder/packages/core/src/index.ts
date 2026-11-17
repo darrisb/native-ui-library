@@ -8,11 +8,15 @@ export type {
 } from "./types/component-property.js";
 export type { ComponentInstance } from "./types/component-instance.js";
 
+export type { DropdownOption } from "./data/parse-static-options.js";
+export { parseStaticOptions } from "./data/parse-static-options.js";
+
 export { ComponentRegistry } from "./registry/component-registry.js";
 
 export {
   buttonDefinition,
   cardDefinition,
+  dropdownDefinition,
   registerSampleDefinitions,
   sampleDefinitions,
   textDefinition

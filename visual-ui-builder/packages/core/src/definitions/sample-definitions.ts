@@ -95,11 +95,60 @@ export const textDefinition: ComponentDefinition = {
   ]
 };
 
+export const dropdownDefinition: ComponentDefinition = {
+  type: "dropdown",
+  name: "Dropdown",
+  category: "form",
+  description: "Selection control with options.",
+  allowChildren: false,
+  dataBinding: ["options"],
+  properties: [
+    {
+      name: "label",
+      type: "string",
+      label: "Label",
+      defaultValue: ""
+    },
+    {
+      name: "placeholder",
+      type: "string",
+      label: "Placeholder",
+      defaultValue: "Select…"
+    },
+    {
+      name: "name",
+      type: "string",
+      label: "Name",
+      defaultValue: ""
+    },
+    {
+      name: "required",
+      type: "boolean",
+      label: "Required",
+      defaultValue: false
+    },
+    {
+      name: "disabled",
+      type: "boolean",
+      label: "Disabled",
+      defaultValue: false
+    },
+    {
+      name: "staticOptions",
+      type: "string",
+      label: "Static Options",
+      defaultValue: "",
+      multiline: true
+    }
+  ]
+};
+
 /** All sample component definitions. */
 export const sampleDefinitions: readonly ComponentDefinition[] = [
   cardDefinition,
   buttonDefinition,
-  textDefinition
+  textDefinition,
+  dropdownDefinition
 ];
 
 /** Registers all sample definitions on the supplied registry. */

@@ -18,4 +18,11 @@ export interface ComponentDefinition {
 
   /** Whether the component may contain child component instances. */
   readonly allowChildren: boolean;
+
+  /**
+   * Binding targets that accept data-source responses.
+   * When present, a component can be bound to a data source whose
+   * response records will be mapped to the named targets.
+   */
+  readonly dataBinding?: readonly string[];
 }
