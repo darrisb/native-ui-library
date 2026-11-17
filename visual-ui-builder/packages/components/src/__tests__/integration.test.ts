@@ -265,7 +265,7 @@ test("validates nested children recursively", () => {
   );
 });
 
-test("registerNativeComponents registers Card, Text, and Button", () => {
+test("registerNativeComponents registers Card, Text, Button, and Dropdown", () => {
   const metadataRegistry = new ComponentRegistry();
   const nativeRegistry = new NativeComponentRegistry();
   registerNativeComponents(metadataRegistry, nativeRegistry);
@@ -275,6 +275,8 @@ test("registerNativeComponents registers Card, Text, and Button", () => {
   assertEqual(nativeRegistry.lookupTag("text"), "ui-text");
   assertEqual(metadataRegistry.lookup("button")?.type, "button");
   assertEqual(nativeRegistry.lookupTag("button"), "ui-button");
+  assertEqual(metadataRegistry.lookup("dropdown")?.type, "dropdown");
+  assertEqual(nativeRegistry.lookupTag("dropdown"), "ui-dropdown");
 });
 
 test("shared registry is used by default", () => {
