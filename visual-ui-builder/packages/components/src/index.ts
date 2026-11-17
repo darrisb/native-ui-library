@@ -1,6 +1,7 @@
 export { UIButton, registerUIButton } from "./button/ui-button.js";
 export { UICard, registerUICard } from "./card/ui-card.js";
 export { UIText, registerUIText } from "./text/ui-text.js";
+export { UIDropdown, registerUIDropdown } from "./dropdown/ui-dropdown.js";
 
 export {
   getNativeComponentRegistry,
