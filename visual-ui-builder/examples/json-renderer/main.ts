@@ -13,7 +13,7 @@ import { renderDocument } from "./renderer.js";
  * configured URL, extracting items via responsePath, and mapping label/value
  * fields into the `data-bound-options` attribute.
  */
-async function resolveDataSourceDropdowns(
+export async function resolveDataSourceDropdowns(
   root: HTMLElement
 ): Promise<void> {
   const dropdowns = root.querySelectorAll("ui-dropdown[data-source-url]");

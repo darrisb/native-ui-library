@@ -70,5 +70,29 @@
             "backgroundColor": "#f0fdf4"
         },
         "children": []
+    },
+    {
+        "id": "dropdown-categories",
+        "type": "dropdown",
+        "properties": {
+            "label": "Category",
+            "placeholder": "Choose a category",
+            "name": "category",
+            "required": true,
+            "staticOptions": "[{\"value\":\"electronics\",\"label\":\"Electronics\"},{\"value\":\"clothing\",\"label\":\"Clothing\"},{\"value\":\"books\",\"label\":\"Books\"}]"
+        }
+    },
+    {
+        "id": "dropdown-customer",
+        "type": "dropdown",
+        "properties": {
+            "label": "Customer",
+            "placeholder": "Select customer…",
+            "name": "customer",
+            "dataSourceUrl": "/api/data/customers?fields=id,name",
+            "dataSourceResponsePath": "items",
+            "dataSourceLabelField": "name",
+            "dataSourceValueField": "id"
+        }
     }
 ]

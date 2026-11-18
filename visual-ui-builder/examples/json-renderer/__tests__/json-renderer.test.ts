@@ -23,6 +23,19 @@ function test(name: string, fn: () => void): void {
   }
 }
 
+async function asyncTest(name: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+    results.push({ name, passed: true });
+  } catch (error) {
+    results.push({
+      name,
+      passed: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 function assertEqual<T>(actual: T, expected: T, message?: string): void {
   if (actual !== expected) {
     throw new Error(
@@ -81,6 +94,33 @@ class MockElement {
   get children(): MockElement[] {
     return this.childNodes;
   }
+
+  querySelectorAll(selector: string): MockElement[] {
+    const results: MockElement[] = [];
+
+    // Extract tag name (e.g. "ui-dropdown" from "ui-dropdown[data-source-url]")
+    const tagMatch = selector.match(/^([\w-]+)/);
+    const tagName = tagMatch ? tagMatch[1].toLowerCase() : null;
+
+    // Extract attribute selector [attr-name]
+    const attrMatch = selector.match(/\[([^\]]+)\]/);
+    const attrName = attrMatch ? attrMatch[1].split("=")[0] : null;
+
+    const search = (element: MockElement): void => {
+      if (tagName && element.nodeName !== tagName) return;
+      if (attrName && element.getAttribute(attrName) === null) return;
+      results.push(element);
+      for (const child of element.childNodes) {
+        search(child);
+      }
+    };
+
+    for (const child of this.childNodes) {
+      search(child);
+    }
+
+    return results;
+  }
 }
 
 function installMockDom(): void {
@@ -91,6 +131,7 @@ function installMockDom(): void {
 
   globals.document = {
     createElement: (tagName: string): MockElement => new MockElement(tagName),
+    getElementById: (): null => null,
   };
 
   globals.customElements = {
@@ -113,6 +154,7 @@ const {
   registerDropdown,
 } = await import("@visual-ui/components");
 const { validateDocumentShape, renderDocument } = await import("../renderer.js");
+const { resolveDataSourceDropdowns } = await import("../main.js");
 
 function createRegistries() {
   const metadataRegistry = new ComponentRegistry();
@@ -628,7 +670,7 @@ test("Dropdown with staticOptions renders with parsed options", () => {
 
   const optionsRaw = dropdown.getAttribute("options");
   assertTrue(optionsRaw !== null, "options attribute should be set");
-  const options = JSON.parse(optionsRaw);
+  const options = JSON.parse(optionsRaw!);
   assertEqual(options.length, 2);
   assertEqual(options[0].value, "a");
   assertEqual(options[0].label, "Alpha");
@@ -751,6 +793,73 @@ test("Dropdown required and disabled properties are applied", () => {
   const dropdown = result.elements[0];
   assertEqual(dropdown.getAttribute("required"), "");
   assertEqual(dropdown.getAttribute("disabled"), "");
+});
+
+await asyncTest("REST dropdown resolves data source via mock fetch and sets data-bound-options", async () => {
+  const originalFetch = globalThis.fetch;
+
+  // Inject a mock fetch that returns customer data
+  (globalThis as Record<string, unknown>).fetch = async (_url: string) => ({
+    ok: true,
+    json: async () => ({
+      items: [
+        { id: "c-101", name: "Acme Corp" },
+        { id: "c-102", name: "Globex Inc" },
+      ],
+    }),
+  });
+
+  try {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+      {
+        id: "dropdown-rest",
+        type: "dropdown",
+        properties: {
+          label: "Customer",
+          placeholder: "Select customer…",
+          name: "customer",
+          dataSourceUrl: "/api/data/customers?fields=id,name",
+          dataSourceResponsePath: "items",
+          dataSourceLabelField: "name",
+          dataSourceValueField: "id",
+        },
+      },
+    ];
+    const result = renderDocument(document, {
+      metadataRegistry,
+      nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    const dropdown = result.elements[0];
+
+    // Create a mock container and attach the dropdown
+    const container = new MockElement("div");
+    container.appendChild(dropdown as unknown as MockElement);
+
+    // Resolve data sources (uses mock fetch)
+    await resolveDataSourceDropdowns(container as unknown as HTMLElement);
+
+    // Verify data-bound-options is set on the dropdown
+    const boundOptionsRaw = dropdown.getAttribute("data-bound-options");
+    assertTrue(
+      boundOptionsRaw !== null,
+      "data-bound-options should be set after resolving REST data source"
+    );
+
+    const boundOptions = JSON.parse(boundOptionsRaw!);
+    assertEqual(boundOptions.length, 2);
+    assertEqual(boundOptions[0].value, "c-101");
+    assertEqual(boundOptions[0].label, "Acme Corp");
+    assertEqual(boundOptions[1].value, "c-102");
+    assertEqual(boundOptions[1].label, "Globex Inc");
+
+    // Verify data-ds-status was cleared (non-empty result)
+    assertEqual(dropdown.getAttribute("data-ds-status"), null);
+  } finally {
+    // Restore original fetch
+    (globalThis as Record<string, unknown>).fetch = originalFetch;
+  }
 });
 
 const passed = results.filter((result) => result.passed).length;
