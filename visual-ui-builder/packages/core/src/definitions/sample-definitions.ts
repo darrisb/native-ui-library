@@ -139,6 +139,30 @@ export const dropdownDefinition: ComponentDefinition = {
       label: "Static Options",
       defaultValue: "",
       multiline: true
+    },
+    {
+      name: "dataSourceUrl",
+      type: "string",
+      label: "Data Source URL",
+      defaultValue: ""
+    },
+    {
+      name: "dataSourceResponsePath",
+      type: "string",
+      label: "Response Path",
+      defaultValue: "items"
+    },
+    {
+      name: "dataSourceLabelField",
+      type: "string",
+      label: "Label Field",
+      defaultValue: "label"
+    },
+    {
+      name: "dataSourceValueField",
+      type: "string",
+      label: "Value Field",
+      defaultValue: "value"
     }
   ]
 };

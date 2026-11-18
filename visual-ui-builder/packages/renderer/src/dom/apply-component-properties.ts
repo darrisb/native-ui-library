@@ -86,8 +86,47 @@ const dropdownAdapter: PropertyAdapter = (element, properties) => {
   }
 
   if (properties.staticOptions !== undefined) {
-    const options = parseStaticOptions(String(properties.staticOptions));
+    const raw = String(properties.staticOptions).trim();
+    let options;
+    // Try JSON array first: [{"value":"a","label":"Alpha"}, ...]
+    if (raw.startsWith("[")) {
+      try {
+        options = JSON.parse(raw);
+      } catch {
+        options = parseStaticOptions(raw);
+      }
+    } else {
+      // Multiline value|label format
+      options = parseStaticOptions(raw);
+    }
     element.setAttribute("options", JSON.stringify(options));
+  }
+
+  // Data-source properties: written as data attributes so a data-binding layer
+  // can read them and perform a fetch to populate data-bound-options.
+  if (properties.dataSourceUrl !== undefined) {
+    element.setAttribute("data-source-url", String(properties.dataSourceUrl));
+  }
+
+  if (properties.dataSourceResponsePath !== undefined) {
+    element.setAttribute(
+      "data-source-response-path",
+      String(properties.dataSourceResponsePath)
+    );
+  }
+
+  if (properties.dataSourceLabelField !== undefined) {
+    element.setAttribute(
+      "data-source-label-field",
+      String(properties.dataSourceLabelField)
+    );
+  }
+
+  if (properties.dataSourceValueField !== undefined) {
+    element.setAttribute(
+      "data-source-value-field",
+      String(properties.dataSourceValueField)
+    );
   }
 };
 

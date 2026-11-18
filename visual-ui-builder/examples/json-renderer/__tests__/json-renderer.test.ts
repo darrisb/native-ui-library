@@ -95,7 +95,7 @@ function installMockDom(): void {
 
   globals.customElements = {
     get: (name: string): object | undefined => {
-      const defined = new Set(["ui-card", "ui-text", "ui-button"]);
+      const defined = new Set(["ui-card", "ui-text", "ui-button", "ui-dropdown"]);
       return defined.has(name) ? {} : undefined;
     },
     define: (): void => {},
@@ -110,6 +110,7 @@ const {
   registerCard,
   registerText,
   registerButton,
+  registerDropdown,
 } = await import("@visual-ui/components");
 const { validateDocumentShape, renderDocument } = await import("../renderer.js");
 
@@ -119,6 +120,16 @@ function createRegistries() {
   registerCard(metadataRegistry, nativeRegistry);
   registerText(metadataRegistry, nativeRegistry);
   registerButton(metadataRegistry, nativeRegistry);
+  return { metadataRegistry, nativeRegistry };
+}
+
+function createRegistriesWithDropdown() {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerCard(metadataRegistry, nativeRegistry);
+  registerText(metadataRegistry, nativeRegistry);
+  registerButton(metadataRegistry, nativeRegistry);
+  registerDropdown(metadataRegistry, nativeRegistry);
   return { metadataRegistry, nativeRegistry };
 }
 
@@ -586,6 +597,160 @@ test("No partial document is rendered when a nested child is invalid", () => {
   assertEqual(result.elements.length, 0);
   assertEqual(result.errors.length, 1);
   assertEqual(result.errors[0].id, "card-parent");
+});
+
+test("Dropdown with staticOptions renders with parsed options", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+  const document = [
+    {
+      id: "dropdown-static",
+      type: "dropdown",
+      properties: {
+        label: "Category",
+        placeholder: "Choose",
+        name: "category",
+        staticOptions:
+          '[{"value":"a","label":"Alpha"},{"value":"b","label":"Beta"}]',
+      },
+    },
+  ];
+  const result = renderDocument(document, {
+    metadataRegistry,
+    nativeRegistry,
+  });
+  assertEqual(result.errors.length, 0);
+  assertEqual(result.elements.length, 1);
+  const dropdown = result.elements[0];
+  assertEqual(dropdown.nodeName, "ui-dropdown");
+  assertEqual(dropdown.getAttribute("label"), "Category");
+  assertEqual(dropdown.getAttribute("placeholder"), "Choose");
+  assertEqual(dropdown.getAttribute("name"), "category");
+
+  const optionsRaw = dropdown.getAttribute("options");
+  assertTrue(optionsRaw !== null, "options attribute should be set");
+  const options = JSON.parse(optionsRaw);
+  assertEqual(options.length, 2);
+  assertEqual(options[0].value, "a");
+  assertEqual(options[0].label, "Alpha");
+  assertEqual(options[1].value, "b");
+  assertEqual(options[1].label, "Beta");
+});
+
+test("Dropdown with dataSource properties renders data attributes", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+  const document = [
+    {
+      id: "dropdown-rest",
+      type: "dropdown",
+      properties: {
+        label: "Customer",
+        placeholder: "Select customer…",
+        name: "customer",
+        dataSourceUrl: "/api/data/customers?fields=id,name",
+        dataSourceResponsePath: "items",
+        dataSourceLabelField: "name",
+        dataSourceValueField: "id",
+      },
+    },
+  ];
+  const result = renderDocument(document, {
+    metadataRegistry,
+    nativeRegistry,
+  });
+  assertEqual(result.errors.length, 0);
+  assertEqual(result.elements.length, 1);
+  const dropdown = result.elements[0];
+  assertEqual(dropdown.nodeName, "ui-dropdown");
+  assertEqual(dropdown.getAttribute("label"), "Customer");
+  assertEqual(
+    dropdown.getAttribute("data-source-url"),
+    "/api/data/customers?fields=id,name"
+  );
+  assertEqual(
+    dropdown.getAttribute("data-source-response-path"),
+    "items"
+  );
+  assertEqual(
+    dropdown.getAttribute("data-source-label-field"),
+    "name"
+  );
+  assertEqual(
+    dropdown.getAttribute("data-source-value-field"),
+    "id"
+  );
+});
+
+test("Dropdown with dataSource does not set static options", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+  const document = [
+    {
+      id: "dropdown-ds-only",
+      type: "dropdown",
+      properties: {
+        label: "Dynamic",
+        dataSourceUrl: "/api/data/items",
+        dataSourceResponsePath: "data",
+        dataSourceLabelField: "name",
+        dataSourceValueField: "id",
+      },
+    },
+  ];
+  const result = renderDocument(document, {
+    metadataRegistry,
+    nativeRegistry,
+  });
+  assertEqual(result.errors.length, 0);
+  const dropdown = result.elements[0];
+  assertEqual(dropdown.getAttribute("options"), null);
+  assertEqual(dropdown.getAttribute("data-source-url"), "/api/data/items");
+});
+
+test("Dropdown without staticOptions or dataSource renders without options", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+  const document = [
+    {
+      id: "dropdown-empty",
+      type: "dropdown",
+      properties: {
+        label: "Empty",
+        name: "empty",
+      },
+    },
+  ];
+  const result = renderDocument(document, {
+    metadataRegistry,
+    nativeRegistry,
+  });
+  assertEqual(result.errors.length, 0);
+  assertEqual(result.elements.length, 1);
+  const dropdown = result.elements[0];
+  assertEqual(dropdown.getAttribute("label"), "Empty");
+  assertEqual(dropdown.getAttribute("options"), null);
+  assertEqual(dropdown.getAttribute("data-source-url"), null);
+});
+
+test("Dropdown required and disabled properties are applied", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+  const document = [
+    {
+      id: "dropdown-constrained",
+      type: "dropdown",
+      properties: {
+        label: "Required",
+        name: "req",
+        required: true,
+        disabled: true,
+      },
+    },
+  ];
+  const result = renderDocument(document, {
+    metadataRegistry,
+    nativeRegistry,
+  });
+  assertEqual(result.errors.length, 0);
+  const dropdown = result.elements[0];
+  assertEqual(dropdown.getAttribute("required"), "");
+  assertEqual(dropdown.getAttribute("disabled"), "");
 });
 
 const passed = results.filter((result) => result.passed).length;

@@ -4,8 +4,80 @@ import {
   registerCard,
   registerText,
   registerButton,
+  registerDropdown,
 } from "@visual-ui/components";
 import { renderDocument } from "./renderer.js";
+
+/**
+ * Walks the rendered DOM and resolves data-source dropdowns by fetching their
+ * configured URL, extracting items via responsePath, and mapping label/value
+ * fields into the `data-bound-options` attribute.
+ */
+async function resolveDataSourceDropdowns(
+  root: HTMLElement
+): Promise<void> {
+  const dropdowns = root.querySelectorAll("ui-dropdown[data-source-url]");
+  const promises: Promise<void>[] = [];
+
+  for (const el of dropdowns) {
+    const url = el.getAttribute("data-source-url");
+    const responsePath = el.getAttribute("data-source-response-path") ?? "";
+    const labelField = el.getAttribute("data-source-label-field") ?? "label";
+    const valueField = el.getAttribute("data-source-value-field") ?? "value";
+
+    if (!url) continue;
+
+    el.setAttribute("data-ds-status", "loading");
+
+    const promise = (async () => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(
+            `HTTP ${response.status} fetching ${url}`
+          );
+        }
+
+        const json = await response.json();
+
+        // Navigate the response path (e.g. "items" or "data.results")
+        let data = json;
+        for (const segment of responsePath.split(".")) {
+          if (data == null || typeof data !== "object") break;
+          data = data[segment];
+        }
+
+        if (!Array.isArray(data)) {
+          el.setAttribute("data-ds-status", "empty");
+          return;
+        }
+
+        const options = data.map((item) => ({
+          value: String(item[valueField] ?? ""),
+          label: String(item[labelField] ?? ""),
+        }));
+
+        el.setAttribute("data-bound-options", JSON.stringify(options));
+
+        if (options.length === 0) {
+          el.setAttribute("data-ds-status", "empty");
+        } else {
+          el.removeAttribute("data-ds-status");
+        }
+      } catch (error) {
+        el.setAttribute("data-ds-status", "error");
+        el.setAttribute(
+          "data-ds-error",
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    })();
+
+    promises.push(promise);
+  }
+
+  await Promise.all(promises);
+}
 
 function showError(container: HTMLElement, message: string): void {
   container.innerHTML = "";
@@ -47,6 +119,7 @@ async function renderApp(): Promise<void> {
     registerCard(metadataRegistry, nativeRegistry);
     registerText(metadataRegistry, nativeRegistry);
     registerButton(metadataRegistry, nativeRegistry);
+    registerDropdown(metadataRegistry, nativeRegistry);
 
     const result = renderDocument(jsonDocument, {
       metadataRegistry,
@@ -72,6 +145,7 @@ async function renderApp(): Promise<void> {
       container.appendChild(element);
     }
 
+    await resolveDataSourceDropdowns(container);
     attachWelcomeButtonListener(container);
   } catch (error) {
     showError(container, error instanceof Error ? error.message : String(error));
