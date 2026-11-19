@@ -173,6 +173,7 @@ export const inputDefinition: ComponentDefinition = {
   category: "form",
   description: "Text input for search and filter values.",
   allowChildren: false,
+  dataBinding: ["options"],
   properties: [
     {
       name: "label",

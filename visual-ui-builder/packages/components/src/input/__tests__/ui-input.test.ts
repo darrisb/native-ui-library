@@ -234,6 +234,17 @@ function findLabel(element: HTMLElement): MockElement | undefined {
   return findPart(element, "label");
 }
 
+function findDatalist(element: HTMLElement): MockElement | undefined {
+  return findPart(element, "suggestions");
+}
+
+function getDatalistOptions(datalist: MockElement): MockElement[] {
+  return datalist.children.filter(
+    (child): child is MockElement =>
+      child instanceof MockElement && child.nodeName === "option"
+  );
+}
+
 // === TESTS ===
 
 test("Renders a label linked to the input via for/id", () => {
@@ -381,6 +392,130 @@ test("Label text renders as text, not HTML", () => {
       child instanceof MockElement && child.nodeName === "img"
   );
   assertEqual(imgChild, undefined, "Expected no img child element.");
+});
+
+test("Renders a datalist linked to the input via list", () => {
+  const element = createInputElement();
+  const input = findInput(element);
+  const datalist = findDatalist(element);
+  assertTrue(input !== undefined, "Expected an input element.");
+  assertTrue(datalist !== undefined, "Expected a datalist element.");
+  assertEqual(datalist!.nodeName, "datalist");
+  assertEqual(
+    input!.getAttribute("list"),
+    datalist!.getAttribute("id"),
+    "Input 'list' should match the datalist 'id'."
+  );
+});
+
+test("data-bound-options produces matching datalist options", () => {
+  const element = createInputElement();
+  element.setAttribute(
+    "data-bound-options",
+    JSON.stringify([
+      { value: "apple", label: "Apple" },
+      { value: "banana", label: "Banana" },
+    ])
+  );
+  const datalist = findDatalist(element);
+  const options = getDatalistOptions(datalist!);
+  assertEqual(options.length, 2, "Expected 2 suggestions.");
+  assertEqual(options[0].value, "apple");
+  assertEqual(options[0].textContent, "Apple");
+  assertEqual(options[1].value, "banana");
+  assertEqual(options[1].textContent, "Banana");
+});
+
+test("Invalid data-bound-options JSON yields no suggestions without throwing", () => {
+  const element = createInputElement();
+  element.setAttribute("data-bound-options", "not valid json {{{");
+  const datalist = findDatalist(element);
+  const options = getDatalistOptions(datalist!);
+  assertEqual(options.length, 0, "Expected no suggestions for invalid JSON.");
+});
+
+test("Updating data-bound-options replaces previous suggestions", () => {
+  const element = createInputElement();
+  element.setAttribute(
+    "data-bound-options",
+    JSON.stringify([{ value: "old", label: "Old" }])
+  );
+  element.setAttribute(
+    "data-bound-options",
+    JSON.stringify([{ value: "new", label: "New" }])
+  );
+  const options = getDatalistOptions(findDatalist(element)!);
+  assertEqual(options.length, 1, "Expected 1 suggestion.");
+  assertEqual(options[0].value, "new");
+});
+
+test("Suggestion labels containing markup render as text, not HTML", () => {
+  const element = createInputElement();
+  element.setAttribute(
+    "data-bound-options",
+    JSON.stringify([
+      { value: "xss", label: '<script>alert("xss")</script>' },
+    ])
+  );
+  const options = getDatalistOptions(findDatalist(element)!);
+  assertEqual(options.length, 1, "Expected 1 suggestion.");
+  assertEqual(
+    options[0].textContent,
+    '<script>alert("xss")</script>',
+    "Expected markup to render as text."
+  );
+  const scriptChild = options[0].children.find(
+    (child) =>
+      child instanceof MockElement && child.nodeName === "script"
+  );
+  assertEqual(scriptChild, undefined, "Expected no script child element.");
+});
+
+test("Loading state sets aria-busy and keeps typing enabled", () => {
+  const element = createInputElement();
+  element.setAttribute("data-ds-status", "loading");
+  const input = findInput(element)!;
+  assertEqual(input.getAttribute("aria-busy"), "true");
+  assertTrue(!input.disabled, "Loading should not disable typing.");
+
+  input.value = "still typing";
+  input.dispatchEvent(
+    new MockEvent("input", { bubbles: true, composed: true })
+  );
+  assertEqual(
+    (element as unknown as { value: string }).value,
+    "still typing",
+    "Typing should work while loading."
+  );
+});
+
+test("Error state sets aria-invalid and keeps typing enabled", () => {
+  const element = createInputElement();
+  element.setAttribute("data-ds-status", "error");
+  element.setAttribute("data-ds-error", "Failed to load suggestions");
+  const input = findInput(element)!;
+  assertEqual(input.getAttribute("aria-invalid"), "true");
+  assertEqual(input.getAttribute("aria-busy"), null);
+  assertTrue(!input.disabled, "Error should not disable typing.");
+
+  input.value = "after error";
+  input.dispatchEvent(
+    new MockEvent("input", { bubbles: true, composed: true })
+  );
+  assertEqual(
+    (element as unknown as { value: string }).value,
+    "after error",
+    "Typing should work after an error."
+  );
+});
+
+test("Idle state clears suggestion status attributes", () => {
+  const element = createInputElement();
+  element.setAttribute("data-ds-status", "error");
+  element.setAttribute("data-ds-status", "idle");
+  const input = findInput(element)!;
+  assertEqual(input.getAttribute("aria-invalid"), null);
+  assertEqual(input.getAttribute("aria-busy"), null);
 });
 
 test("registerUIInput defines the ui-input custom element", () => {

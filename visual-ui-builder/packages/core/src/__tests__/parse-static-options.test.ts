@@ -44,7 +44,11 @@ function assertTrue(value: boolean, message?: string): void {
 }
 
 const { parseStaticOptions } = await import("../data/parse-static-options.js");
-const { dropdownDefinition, ComponentRegistry } = await import("../index.js");
+const {
+  dropdownDefinition,
+  inputDefinition,
+  ComponentRegistry,
+} = await import("../index.js");
 
 // -- parseStaticOptions tests --
 
@@ -132,6 +136,16 @@ test("dropdownDefinition can be registered on ComponentRegistry", () => {
   const registry = new ComponentRegistry();
   registry.register(dropdownDefinition);
   assertEqual(registry.lookup("dropdown")?.type, "dropdown");
+});
+
+// -- inputDefinition validation tests --
+
+test("inputDefinition declares the options binding target", () => {
+  assertEqual(inputDefinition.type, "input");
+  assertEqual(inputDefinition.name, "Input");
+  assertEqual(inputDefinition.category, "form");
+  assertEqual(inputDefinition.allowChildren, false);
+  assertDeepEqual(inputDefinition.dataBinding, ["options"]);
 });
 
 // -- Summary --

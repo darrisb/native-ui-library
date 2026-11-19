@@ -93,19 +93,53 @@ function parseMaxLength(value: string | null): number | null {
   return parsed;
 }
 
+type InputOption = {
+  value: string;
+  label: string;
+};
+
+type DataSourceStatus = "idle" | "loading" | "empty" | "error";
+
+function parseOptionsJSON(value: string | null): InputOption[] | null {
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed as InputOption[];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getStatus(el: UIInput): DataSourceStatus {
+  const status = el.getAttribute("data-ds-status");
+  if (status === "loading" || status === "empty" || status === "error") {
+    return status;
+  }
+  return "idle";
+}
+
 /**
  * Native Web Component that renders an accessible text input control.
  *
  * Supported attributes:
- * - label:         visible label text above the input
- * - placeholder:   placeholder text shown inside the input
- * - name:          name attribute on the native <input>
- * - input-type:    one of text, search, email, number, date, tel, url (default text)
- * - required:      whether the input is required
- * - disabled:      whether the input is disabled
- * - readonly:      whether the input is read only
- * - max-length:    maximum number of characters (optional)
- * - default-value: initial value of the input
+ * - label:              visible label text above the input
+ * - placeholder:        placeholder text shown inside the input
+ * - name:               name attribute on the native <input>
+ * - input-type:         one of text, search, email, number, date, tel, url (default text)
+ * - required:           whether the input is required
+ * - disabled:           whether the input is disabled
+ * - readonly:           whether the input is read only
+ * - max-length:         maximum number of characters (optional)
+ * - default-value:      initial value of the input
+ * - data-bound-options: JSON array of {value, label} written by the binding
+ *                       adapter; rendered as <datalist> suggestions
+ * - data-ds-status:     one of idle, loading, empty, error
+ * - data-ds-error:      error message text for the current suggestion state
  */
 export class UIInput extends HTMLElement {
   static get observedAttributes(): string[] {
@@ -119,13 +153,18 @@ export class UIInput extends HTMLElement {
       "readonly",
       "max-length",
       "default-value",
+      "data-bound-options",
+      "data-ds-status",
+      "data-ds-error",
     ];
   }
 
   private labelEl: HTMLLabelElement;
   private inputEl: HTMLInputElement;
+  private datalistEl: HTMLDataListElement;
   private idCounter: number;
   private inputId: string;
+  private datalistId: string;
   private _value: string | null = null;
 
   constructor() {
@@ -133,6 +172,7 @@ export class UIInput extends HTMLElement {
 
     this.idCounter = Date.now() + Math.floor(Math.random() * 10000);
     this.inputId = `ui-input-field-${this.idCounter}`;
+    this.datalistId = `ui-input-suggestions-${this.idCounter}`;
 
     const shadow = this.attachShadow({ mode: "open" });
 
@@ -148,7 +188,13 @@ export class UIInput extends HTMLElement {
     this.inputEl = document.createElement("input");
     this.inputEl.setAttribute("part", "input");
     this.inputEl.setAttribute("id", this.inputId);
+    this.inputEl.setAttribute("list", this.datalistId);
     shadow.appendChild(this.inputEl);
+
+    this.datalistEl = document.createElement("datalist");
+    this.datalistEl.setAttribute("part", "suggestions");
+    this.datalistEl.setAttribute("id", this.datalistId);
+    shadow.appendChild(this.datalistEl);
 
     this.inputEl.addEventListener("input", (e: Event) => {
       e.stopPropagation();
@@ -268,12 +314,51 @@ export class UIInput extends HTMLElement {
       this.inputEl.maxLength = -1;
     }
 
+    // Link the suggestion datalist
+    this.inputEl.setAttribute("list", this.datalistId);
+
+    // Reflect the suggestion data-source status. Loading and error states
+    // never disable the input, so typing always remains available.
+    const status = getStatus(this);
+    if (status === "loading") {
+      this.inputEl.setAttribute("aria-busy", "true");
+      this.inputEl.removeAttribute("aria-invalid");
+    } else {
+      this.inputEl.removeAttribute("aria-busy");
+      if (status === "error") {
+        this.inputEl.setAttribute("aria-invalid", "true");
+      } else {
+        this.inputEl.removeAttribute("aria-invalid");
+      }
+    }
+
     // Apply the default value only while no explicit value has been set
     if (this._value === null) {
       this.inputEl.value = this.getAttribute("default-value") ?? "";
     } else {
       this.inputEl.value = this._value;
     }
+
+    this.renderSuggestions();
+  }
+
+  private renderSuggestions(): void {
+    const options = parseOptionsJSON(this.getAttribute("data-bound-options"));
+
+    if (options === null) {
+      this.datalistEl.replaceChildren();
+      return;
+    }
+
+    const children: Node[] = [];
+    for (const option of options) {
+      const el = document.createElement("option");
+      el.value = option.value;
+      el.textContent = option.label;
+      children.push(el);
+    }
+
+    this.datalistEl.replaceChildren(...children);
   }
 }
 
