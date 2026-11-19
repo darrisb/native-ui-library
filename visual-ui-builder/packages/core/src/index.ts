@@ -17,6 +17,7 @@ export {
   buttonDefinition,
   cardDefinition,
   dropdownDefinition,
+  inputDefinition,
   registerSampleDefinitions,
   sampleDefinitions,
   textDefinition
