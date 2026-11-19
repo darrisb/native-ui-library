@@ -140,6 +140,11 @@ function getStatus(el: UIInput): DataSourceStatus {
  *                       adapter; rendered as <datalist> suggestions
  * - data-ds-status:     one of idle, loading, empty, error
  * - data-ds-error:      error message text for the current suggestion state
+ *
+ * Events:
+ * - input/change: bubbling, composed CustomEvents with detail {value}
+ * - submit:       bubbling, composed CustomEvent fired when Enter is pressed,
+ *                 with detail {value}
  */
 export class UIInput extends HTMLElement {
   static get observedAttributes(): string[] {
@@ -215,6 +220,22 @@ export class UIInput extends HTMLElement {
       this._value = newValue;
       this.dispatchEvent(
         new CustomEvent("change", {
+          bubbles: true,
+          composed: true,
+          detail: { value: newValue },
+        })
+      );
+    });
+
+    this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key !== "Enter") {
+        return;
+      }
+      e.stopPropagation();
+      const newValue = this.inputEl.value;
+      this._value = newValue;
+      this.dispatchEvent(
+        new CustomEvent("submit", {
           bubbles: true,
           composed: true,
           detail: { value: newValue },

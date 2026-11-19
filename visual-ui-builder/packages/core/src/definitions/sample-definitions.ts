@@ -174,6 +174,16 @@ export const inputDefinition: ComponentDefinition = {
   description: "Text input for search and filter values.",
   allowChildren: false,
   dataBinding: ["options"],
+  events: [
+    {
+      event: "focus",
+      label: "Focus"
+    },
+    {
+      event: "submit",
+      label: "Submit"
+    }
+  ],
   properties: [
     {
       name: "label",

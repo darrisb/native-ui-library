@@ -1,5 +1,6 @@
 import {
   ComponentRegistry,
+  validateActions,
   type ComponentInstance,
   type ComponentPropertyType,
 } from "@visual-ui/core";
@@ -92,8 +93,9 @@ function validateProperties(
  *
  * Checks that the component type exists, that every property is supported and
  * has a valid value, that required properties are present, that children are
- * only supplied when allowed, and that the instance tree contains no cyclic
- * references. Nested children are validated recursively.
+ * only supplied when allowed, that declarative actions satisfy the shared
+ * action contracts, and that the instance tree contains no cyclic references.
+ * Nested children are validated recursively.
  */
 export function validateComponentInstance(
   instance: ComponentInstance,
@@ -124,6 +126,10 @@ export function validateComponentInstance(
   }
 
   validateProperties(instance, definition, path, errors);
+
+  // ActionValidationIssue is structurally identical to ValidationError, so
+  // merging keeps a single flat ValidationError[] for downstream consumers.
+  errors.push(...validateActions(instance.actions, path, []));
 
   const children = instance.children ?? [];
   if (children.length > 0) {

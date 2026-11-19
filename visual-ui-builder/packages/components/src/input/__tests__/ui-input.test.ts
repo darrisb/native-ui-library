@@ -47,6 +47,7 @@ class MockEvent {
   readonly bubbles: boolean;
   readonly composed: boolean;
   readonly detail: Record<string, unknown>;
+  readonly key: string;
   defaultPrevented = false;
   propagationStopped = false;
 
@@ -56,12 +57,14 @@ class MockEvent {
       bubbles?: boolean;
       composed?: boolean;
       detail?: Record<string, unknown>;
+      key?: string;
     } = {}
   ) {
     this.type = type;
     this.bubbles = options.bubbles ?? false;
     this.composed = options.composed ?? false;
     this.detail = options.detail ?? {};
+    this.key = options.key ?? "";
   }
 
   stopPropagation(): void {
@@ -360,6 +363,66 @@ test("Fires a bubbling composed change event with the value detail", () => {
   assertEqual(changeEvents[0].detail.value, "committed");
   assertTrue(changeEvents[0].bubbles, "Expected change event to bubble.");
   assertTrue(changeEvents[0].composed, "Expected change event to be composed.");
+});
+
+test("Fires a bubbling composed submit event with the value detail on Enter", () => {
+  const element = createInputElement();
+  const submitEvents: MockEvent[] = [];
+  (element as unknown as MockElement).addEventListener(
+    "submit",
+    (event: MockEvent) => {
+      submitEvents.push(event);
+    }
+  );
+
+  const input = findInput(element)!;
+  input.value = "find me";
+  input.dispatchEvent(
+    new MockEvent("keydown", { key: "Enter", bubbles: true, composed: true })
+  );
+
+  assertEqual(submitEvents.length, 1, "Expected one submit event.");
+  assertEqual(submitEvents[0].detail.value, "find me");
+  assertTrue(submitEvents[0].bubbles, "Expected submit event to bubble.");
+  assertTrue(submitEvents[0].composed, "Expected submit event to be composed.");
+});
+
+test("Non-Enter keys do not fire a submit event", () => {
+  const element = createInputElement();
+  const submitEvents: MockEvent[] = [];
+  (element as unknown as MockElement).addEventListener(
+    "submit",
+    (event: MockEvent) => {
+      submitEvents.push(event);
+    }
+  );
+
+  const input = findInput(element)!;
+  input.value = "typed";
+  input.dispatchEvent(
+    new MockEvent("keydown", { key: "a", bubbles: true, composed: true })
+  );
+
+  assertEqual(submitEvents.length, 0, "Expected no submit event for non-Enter.");
+});
+
+test("Submit event bubbles through Shadow DOM to a parent container", () => {
+  const element = createInputElement();
+  const parent = new MockElement("div");
+  parent.appendChild(element as unknown as MockElement);
+
+  let parentSubmitCount = 0;
+  parent.addEventListener("submit", () => {
+    parentSubmitCount += 1;
+  });
+
+  const input = findInput(element)!;
+  input.value = "bubbled";
+  input.dispatchEvent(
+    new MockEvent("keydown", { key: "Enter", bubbles: true, composed: true })
+  );
+
+  assertEqual(parentSubmitCount, 1, "Expected parent to receive submit event.");
 });
 
 test("Events bubble through Shadow DOM to a parent container", () => {

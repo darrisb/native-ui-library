@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "node dist/__tests__/render-component.test.js"
+    "test": "node dist/__tests__/render-component.test.js && node dist/__tests__/execute-action.test.js && node dist/__tests__/action-event-wiring.test.js"
   },
   "dependencies": {
     "@visual-ui/core": "^0.1.0",
