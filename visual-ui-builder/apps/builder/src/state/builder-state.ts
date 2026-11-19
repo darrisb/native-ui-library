@@ -9,6 +9,10 @@ import {
   updateComponentById,
   type BuilderDocument,
 } from "./builder-document.ts";
+import {
+  createDocumentHistory,
+  type DocumentHistory,
+} from "./document-history.ts";
 
 /** Listener notified whenever the builder document changes. */
 export type DocumentChangeListener = (document: BuilderDocument) => void;
@@ -112,15 +116,44 @@ export interface BuilderState {
    * validates the result against the metadata registry, and updates the
    * document when validation succeeds.
    *
+   * A patch value of `undefined` removes the property from the instance, which
+   * clears optional properties such as an input's `maxLength`.
+   *
    * The instance may be anywhere in the document tree.
    *
    * @throws Error when the instance is not found or validation fails.
    */
   updateInstanceProperties(
     id: string,
-    patch: Record<string, string | number | boolean>,
+    patch: Record<string, string | number | boolean | undefined>,
     registry: ComponentRegistry
   ): void;
+
+  /**
+   * Reverts the most recent document mutation and notifies subscribers once.
+   *
+   * When the currently selected instance does not exist in the restored
+   * document, selection is cleared and selection subscribers are notified.
+   * Unrelated selection is preserved. If there is nothing to undo, state is
+   * left untouched and no subscribers are notified.
+   */
+  undo(): void;
+
+  /**
+   * Re-applies the most recently undone mutation and notifies subscribers once.
+   *
+   * When the currently selected instance does not exist in the restored
+   * document, selection is cleared and selection subscribers are notified.
+   * Unrelated selection is preserved. If there is nothing to redo, state is
+   * left untouched and no subscribers are notified.
+   */
+  redo(): void;
+
+  /** Returns true when at least one undo operation is available. */
+  canUndo(): boolean;
+
+  /** Returns true when at least one redo operation is available. */
+  canRedo(): boolean;
 
   /**
    * Subscribes to document changes.
@@ -140,6 +173,7 @@ export function createBuilderState(
   initialDocument: BuilderDocument = { rootInstances: [] }
 ): BuilderState {
   let document: BuilderDocument = initialDocument;
+  let history: DocumentHistory = createDocumentHistory(initialDocument);
   let selectedInstanceId: string | null = null;
   const documentListeners = new Set<DocumentChangeListener>();
   const selectionListeners = new Set<SelectionChangeListener>();
@@ -156,6 +190,46 @@ export function createBuilderState(
     }
   }
 
+  /**
+   * Records a new document in history after a successful mutation.
+   *
+   * The history module ignores identical references, so this is safe to call
+   * after every mutation.
+   */
+  function recordHistory(nextDocument: BuilderDocument): void {
+    history = history.record(nextDocument);
+  }
+
+  /**
+   * Restores the document and selection from the supplied history snapshot.
+   *
+   * If the snapshot's present document matches the current document reference,
+   * no changes are made and no subscribers are notified. Otherwise the document
+   * is replaced, selection is validated against the restored document, and
+   * subscribers are notified exactly once for each changed channel.
+   */
+  function restoreFromHistory(nextHistory: DocumentHistory): void {
+    if (nextHistory.present === document) {
+      return;
+    }
+
+    const nextDocument = nextHistory.present;
+    const previousSelection = selectedInstanceId;
+
+    document = nextDocument;
+    history = nextHistory;
+
+    if (
+      previousSelection !== null &&
+      findComponentById(nextDocument, previousSelection) === undefined
+    ) {
+      selectedInstanceId = null;
+      notifySelection();
+    }
+
+    notifyDocument();
+  }
+
   return {
     getDocument(): BuilderDocument {
       return document;
@@ -166,7 +240,9 @@ export function createBuilderState(
     },
 
     addRootInstance(instance: ComponentInstance): void {
-      document = addRootInstance(document, instance);
+      const nextDocument = addRootInstance(document, instance);
+      document = nextDocument;
+      recordHistory(nextDocument);
       notifyDocument();
     },
 
@@ -198,7 +274,9 @@ export function createBuilderState(
         throw new Error(`Instance "${instance.id}" already exists.`);
       }
 
-      document = insertRootInstanceAt(document, instance, index);
+      const nextDocument = insertRootInstanceAt(document, instance, index);
+      document = nextDocument;
+      recordHistory(nextDocument);
       notifyDocument();
     },
 
@@ -237,7 +315,14 @@ export function createBuilderState(
         throw new Error(`Instance "${instance.id}" already exists.`);
       }
 
-      document = insertChildInstanceAt(document, parentId, instance, index);
+      const nextDocument = insertChildInstanceAt(
+        document,
+        parentId,
+        instance,
+        index
+      );
+      document = nextDocument;
+      recordHistory(nextDocument);
       notifyDocument();
     },
 
@@ -271,16 +356,20 @@ export function createBuilderState(
       }
 
       const beforeDocument = document;
-      document = moveComponentById(
+      const nextDocument = moveComponentById(
         document,
         componentId,
         targetParentId,
         targetIndex
       );
 
-      if (document !== beforeDocument) {
-        notifyDocument();
+      if (nextDocument === beforeDocument) {
+        return;
       }
+
+      document = nextDocument;
+      recordHistory(nextDocument);
+      notifyDocument();
     },
 
     selectInstance(id: string | null): void {
@@ -298,7 +387,7 @@ export function createBuilderState(
 
     updateInstanceProperties(
       id: string,
-      patch: Record<string, string | number | boolean>,
+      patch: Record<string, string | number | boolean | undefined>,
       registry: ComponentRegistry
     ): void {
       const target = findComponentById(document, id);
@@ -306,9 +395,20 @@ export function createBuilderState(
         throw new Error(`Instance "${id}" does not exist.`);
       }
 
+      const nextProperties: Record<string, string | number | boolean> = {
+        ...target.properties,
+      };
+      for (const [name, value] of Object.entries(patch)) {
+        if (value === undefined) {
+          delete nextProperties[name];
+        } else {
+          nextProperties[name] = value;
+        }
+      }
+
       const updatedInstance: ComponentInstance = {
         ...target,
-        properties: { ...target.properties, ...patch },
+        properties: nextProperties,
       };
 
       const errors = validateComponentInstance(updatedInstance, registry);
@@ -317,8 +417,30 @@ export function createBuilderState(
         throw new Error(`Invalid property update: ${messages}`);
       }
 
-      document = updateComponentById(document, id, () => updatedInstance);
+      const nextDocument = updateComponentById(
+        document,
+        id,
+        () => updatedInstance
+      );
+      document = nextDocument;
+      recordHistory(nextDocument);
       notifyDocument();
+    },
+
+    undo(): void {
+      restoreFromHistory(history.undo());
+    },
+
+    redo(): void {
+      restoreFromHistory(history.redo());
+    },
+
+    canUndo(): boolean {
+      return history.canUndo;
+    },
+
+    canRedo(): boolean {
+      return history.canRedo;
     },
 
     subscribe(listener: DocumentChangeListener): () => void {

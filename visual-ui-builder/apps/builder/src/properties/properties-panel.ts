@@ -5,9 +5,15 @@ import type {
   ComponentRegistry,
 } from "@visual-ui/core";
 
+/** Value a property editor can commit. `undefined` clears an optional property. */
+export type PropertyValue = string | number | boolean;
+
+/** Property patch committed by the panel; `undefined` removes the property. */
+export type PropertyPatch = Record<string, PropertyValue | undefined>;
+
 export type PropertyChangeHandler = (
   instanceId: string,
-  patch: Record<string, string | number | boolean>
+  patch: PropertyPatch
 ) => void;
 
 export interface PropertiesPanelApi {
@@ -58,17 +64,33 @@ function buildControlId(instanceId: string, propertyName: string): string {
   return `property-${instanceId}-${propertyName}`;
 }
 
+/**
+ * Returns true for optional number properties that have no default value.
+ *
+ * Clearing these properties in the panel removes them from the instance so the
+ * component metadata default (or the absence of a value) applies.
+ */
+function isClearableNumber(property: ComponentPropertyDefinition): boolean {
+  return (
+    property.type === "number" &&
+    property.defaultValue === undefined &&
+    !property.required
+  );
+}
+
 function convertInputValue(
   property: ComponentPropertyDefinition,
   value: string
-): { value: string | number | boolean; valid: true } | { valid: false } {
+): { value: PropertyValue | undefined; valid: true } | { valid: false } {
   switch (property.type) {
     case "string":
     case "color":
       return { value, valid: true };
     case "number": {
       if (value.trim() === "") {
-        return { valid: false };
+        return isClearableNumber(property)
+          ? { value: undefined, valid: true }
+          : { valid: false };
       }
       const parsed = Number(value);
       if (Number.isNaN(parsed)) {
@@ -88,7 +110,7 @@ function convertInputValue(
 interface FieldState {
   readonly property: ComponentPropertyDefinition;
   readonly input: HTMLElement;
-  lastValidValue: string | number | boolean;
+  lastValidValue: PropertyValue | undefined;
 }
 
 function createStringControl(
@@ -114,14 +136,14 @@ function createStringControl(
 
 function createNumberControl(
   _property: ComponentPropertyDefinition,
-  value: number,
+  value: number | undefined,
   controlId: string
 ): HTMLInputElement {
   const input = document.createElement("input");
   input.setAttribute("type", "number");
   input.id = controlId;
   input.className = "properties-control";
-  input.value = String(value);
+  input.value = value === undefined ? "" : String(value);
   return input;
 }
 
@@ -185,22 +207,30 @@ function createUnsupportedControl(
   return note;
 }
 
+function valueToString(value: PropertyValue | undefined): string {
+  return value === undefined ? "" : String(value);
+}
+
 function createFieldControl(
   property: ComponentPropertyDefinition,
-  value: string | number | boolean,
+  value: PropertyValue | undefined,
   controlId: string
 ): HTMLElement {
   switch (property.type) {
     case "string":
-      return createStringControl(property, String(value), controlId);
+      return createStringControl(property, valueToString(value), controlId);
     case "number":
-      return createNumberControl(property, Number(value), controlId);
+      return createNumberControl(
+        property,
+        value === undefined ? undefined : Number(value),
+        controlId
+      );
     case "boolean":
       return createBooleanControl(property, Boolean(value), controlId);
     case "color":
-      return createColorControl(property, String(value), controlId);
+      return createColorControl(property, valueToString(value), controlId);
     case "select":
-      return createSelectControl(property, String(value), controlId);
+      return createSelectControl(property, valueToString(value), controlId);
     default:
       return createUnsupportedControl(property, controlId);
   }
@@ -216,25 +246,29 @@ function getInputValue(input: HTMLElement): string {
   return (input as HTMLInputElement | HTMLSelectElement).value;
 }
 
-function setInputValue(input: HTMLElement, value: string | number | boolean): void {
+function setInputValue(
+  input: HTMLElement,
+  value: PropertyValue | undefined
+): void {
   const tagName = input.nodeName.toLowerCase();
   if (tagName === "input") {
     if (input.getAttribute("type") === "checkbox") {
       (input as HTMLInputElement).checked = Boolean(value);
     } else {
-      (input as HTMLInputElement).value = String(value);
+      (input as HTMLInputElement).value = value === undefined ? "" : String(value);
     }
   } else if (tagName === "textarea") {
-    (input as HTMLTextAreaElement).value = String(value);
+    (input as HTMLTextAreaElement).value =
+      value === undefined ? "" : String(value);
   } else if (tagName === "select") {
-    (input as HTMLSelectElement).value = String(value);
+    (input as HTMLSelectElement).value = value === undefined ? "" : String(value);
   }
 }
 
 function createField(
   instanceId: string,
   property: ComponentPropertyDefinition,
-  value: string | number | boolean,
+  value: PropertyValue | undefined,
   onChange: PropertyChangeHandler,
   validationMessage: HTMLElement
 ): { field: HTMLElement; state: FieldState } {
@@ -279,10 +313,14 @@ function createField(
   };
 
   const handleBlur = (): void => {
-    if (property.type === "number" && input.nodeName.toLowerCase() === "input") {
+    if (
+      property.type === "number" &&
+      !isClearableNumber(property) &&
+      input.nodeName.toLowerCase() === "input"
+    ) {
       const inputElement = input as HTMLInputElement;
       if (inputElement.value.trim() === "") {
-        inputElement.value = String(state.lastValidValue);
+        inputElement.value = String(state.lastValidValue ?? "");
         validationMessage.textContent = "";
       }
     }
@@ -314,7 +352,11 @@ function buildForm(
   instance: ComponentInstance,
   definition: ComponentDefinition,
   onChange: PropertyChangeHandler
-): { root: HTMLElement; fields: FieldState[]; validationMessage: HTMLElement } {
+): {
+  root: HTMLElement;
+  fields: FieldState[];
+  validationMessage: HTMLElement;
+} {
   const root = document.createElement("div");
   root.className = "properties-form";
 
@@ -347,10 +389,12 @@ function buildForm(
 
 function getFallbackDefault(
   property: ComponentPropertyDefinition
-): string | number | boolean {
+): PropertyValue | undefined {
   switch (property.type) {
     case "number":
-      return 0;
+      // Optional numbers (such as maxLength) have no meaningful zero default;
+      // leaving the control empty keeps the property unset.
+      return undefined;
     case "boolean":
       return false;
     case "color":
