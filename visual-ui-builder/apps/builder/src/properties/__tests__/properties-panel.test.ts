@@ -139,14 +139,13 @@ function installMockDom(): void {
 
 installMockDom();
 
-const { ComponentRegistry, registerSampleDefinitions, dropdownDefinition } = await import(
+const { ComponentRegistry, registerSampleDefinitions } = await import(
   "@visual-ui/core"
 );
 const { renderPropertiesPanel } = await import("../properties-panel.ts");
 
 const registry = new ComponentRegistry();
 registerSampleDefinitions(registry);
-registry.register(dropdownDefinition);
 
 const document = globalThis.document as {
   createElement: (tagName: string) => MockElement;

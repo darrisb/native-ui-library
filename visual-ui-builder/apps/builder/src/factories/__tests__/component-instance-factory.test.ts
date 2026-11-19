@@ -59,7 +59,7 @@ function installMinimalDomShim(): void {
 
 installMinimalDomShim();
 
-const { ComponentRegistry, registerSampleDefinitions, dropdownDefinition } = await import(
+const { ComponentRegistry, registerSampleDefinitions } = await import(
   "@visual-ui/core"
 );
 
@@ -108,7 +108,6 @@ test("Creates a valid Button instance with default properties", () => {
 test("Creates a valid Dropdown instance with default properties", () => {
   const registry = new ComponentRegistry();
   registerSampleDefinitions(registry);
-  registry.register(dropdownDefinition);
   const instance = createComponentInstance("dropdown", registry);
   assertEqual(instance.type, "dropdown");
   assertEqual(instance.properties.label, "");
