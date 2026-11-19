@@ -365,6 +365,26 @@ test("Fires a bubbling composed change event with the value detail", () => {
   assertTrue(changeEvents[0].composed, "Expected change event to be composed.");
 });
 
+test("Fires a bubbling composed focus event with the value detail", () => {
+  const element = createInputElement();
+  const focusEvents: MockEvent[] = [];
+  (element as unknown as MockElement).addEventListener(
+    "focus",
+    (event: MockEvent) => {
+      focusEvents.push(event);
+    }
+  );
+
+  const input = findInput(element)!;
+  input.value = "focused value";
+  input.dispatchEvent(new MockEvent("focus"));
+
+  assertEqual(focusEvents.length, 1, "Expected one focus event.");
+  assertEqual(focusEvents[0].detail.value, "focused value");
+  assertTrue(focusEvents[0].bubbles, "Expected focus event to bubble.");
+  assertTrue(focusEvents[0].composed, "Expected focus event to be composed.");
+});
+
 test("Fires a bubbling composed submit event with the value detail on Enter", () => {
   const element = createInputElement();
   const submitEvents: MockEvent[] = [];

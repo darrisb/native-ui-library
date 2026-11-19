@@ -203,6 +203,15 @@ function submitAction(
   };
 }
 
+function focusAction(): NavigateAction {
+  return {
+    id: "focus-1",
+    event: "focus",
+    type: "navigate",
+    config: { url: "/search?q={value}" },
+  };
+}
+
 function searchInstance(action: NavigateAction): ComponentInstance {
   return {
     id: "input-1",
@@ -231,6 +240,22 @@ test("interactive mode binds the input's submit event", () => {
   assertEqual(element.listenerCount("submit"), 1);
 });
 
+test("interactive mode binds the input's focus event", () => {
+  const element = render(searchInstance(focusAction()), "interactive");
+  assertEqual(element.listenerCount("focus"), 1);
+});
+
+test("focus action navigates using the event value", () => {
+  const adapter = new FakeNavigationAdapter();
+  const element = render(searchInstance(focusAction()), "interactive", adapter);
+
+  element.fire("focus", new MockEvent("focus", { value: "a b" }));
+
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.method, "navigateTo");
+  assertEqual(adapter.calls[0]!.url, "/search?q=a%20b");
+});
+
 test("edit mode binds no action listeners", () => {
   const element = render(searchInstance(submitAction()), "edit");
   assertEqual(element.listenerCount("submit"), 0);
@@ -248,6 +273,27 @@ test("Enter submit navigates to the URL-encoded search results", () => {
   assertEqual(adapter.calls.length, 1);
   assertEqual(adapter.calls[0]!.method, "navigateTo");
   assertEqual(adapter.calls[0]!.url, "/search?q=a%20b%26c");
+});
+
+test("multiple actions bound to the same event all execute", () => {
+  const adapter = new FakeNavigationAdapter();
+  const instance: ComponentInstance = {
+    id: "input-multi",
+    type: "input",
+    properties: { label: "Search" },
+    actions: [
+      submitAction({ id: "submit-1", config: { url: "/first?q={value}" } }),
+      submitAction({ id: "submit-2", config: { url: "/second?q={value}" } }),
+    ],
+  };
+  const element = render(instance, "interactive", adapter);
+
+  assertEqual(element.listenerCount("submit"), 1);
+  element.fire("submit", new MockEvent("submit", { value: "x" }));
+
+  assertEqual(adapter.calls.length, 2);
+  assertEqual(adapter.calls[0]!.url, "/first?q=x");
+  assertEqual(adapter.calls[1]!.url, "/second?q=x");
 });
 
 test("edit mode submit does not navigate", () => {

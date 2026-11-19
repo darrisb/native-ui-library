@@ -19,60 +19,12 @@
  */
 
 import {
+  isAllowedUrl,
   NAVIGATE_VALUE_TOKEN,
   type ComponentAction,
   type NavigateAction
 } from "@visual-ui/core";
 import { BrowserNavigationAdapter, type NavigationAdapter } from "./navigation-adapter.js";
-
-/**
- * URL schemes permitted for declarative navigation at the execution boundary.
- *
- * This is an explicit allowlist; any scheme not listed here (and any absolute
- * URL using it) is rejected. Relative URLs with no scheme are handled
- * separately and are always permitted.
- */
-const ALLOWED_URL_SCHEMES: readonly string[] = [
-  "http",
-  "https",
-  "mailto",
-  "tel",
-];
-
-/** URL schemes that are unconditionally blocked even if they look exotic. */
-const BLOCKED_URL_SCHEMES: readonly string[] = [
-  "javascript",
-  "data",
-  "vbscript",
-  "file",
-];
-
-/**
- * Extracts the URL scheme (the part before the first `:`), lower-cased, or
- * `null` when no absolute scheme is present (e.g. relative URLs).
- *
- * Leading whitespace and control characters are stripped first to defeat scheme
- * obfuscation (e.g. `java\nscript:`).
- */
-function extractUrlScheme(url: string): string | null {
-  const trimmed = url.replace(/^[\s\u0000-\u001f]+/, "");
-  const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
-  return match ? match[1].toLowerCase() : null;
-}
-
-/** Reports whether the URL uses a permitted (safe) scheme or is relative. */
-function isAllowedUrl(url: string): boolean {
-  const scheme = extractUrlScheme(url);
-  if (scheme === null) {
-    // Relative URL (no absolute scheme) — permitted.
-    return true;
-  }
-  // Defense in depth: reject known-dangerous schemes first.
-  if (BLOCKED_URL_SCHEMES.includes(scheme)) {
-    return false;
-  }
-  return ALLOWED_URL_SCHEMES.includes(scheme);
-}
 
 /** Type narrowing helper for `navigate` actions. */
 function isNavigateAction(

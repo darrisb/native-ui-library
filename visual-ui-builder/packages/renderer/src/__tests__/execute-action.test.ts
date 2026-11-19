@@ -342,6 +342,17 @@ test("file: URL is silently ignored", () => {
   assertEqual(adapter.calls.length, 0);
 });
 
+test("ftp: URL (neither allowed nor blocked) is silently ignored", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "ftp://example.com/file" } }),
+    undefined,
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 0);
+});
+
 test("obfuscated javascript: (leading whitespace) is silently ignored", () => {
   const adapter = new FakeNavigationAdapter();
   const executor = new ActionExecutor({ navigationAdapter: adapter });

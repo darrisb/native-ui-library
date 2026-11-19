@@ -23,6 +23,13 @@ export { NAVIGATE_VALUE_TOKEN } from "./types/action.js";
 export type { ActionValidationIssue } from "./validation/validate-action.js";
 export { validateActions } from "./validation/validate-action.js";
 
+export {
+  ALLOWED_URL_SCHEMES,
+  BLOCKED_URL_SCHEMES,
+  extractUrlScheme,
+  isAllowedUrl
+} from "./validation/url-safety.js";
+
 export type { DropdownOption } from "./data/parse-static-options.js";
 export { parseStaticOptions } from "./data/parse-static-options.js";
 

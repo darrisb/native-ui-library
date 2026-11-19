@@ -250,6 +250,16 @@ test("an uppercase JAVASCRIPT: scheme is rejected (case-insensitive)", () => {
   assertIncludes(errors[0]!.message, "disallowed URL scheme");
 });
 
+test("an ftp: URL scheme (neither allowed nor blocked) is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "ftp://example.com/file" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "disallowed URL scheme");
+});
+
 // ---------------------------------------------------------------------------
 // {value} token placement
 // ---------------------------------------------------------------------------

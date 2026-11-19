@@ -143,6 +143,8 @@ function getStatus(el: UIInput): DataSourceStatus {
  *
  * Events:
  * - input/change: bubbling, composed CustomEvents with detail {value}
+ * - focus:        bubbling, composed CustomEvent fired when the inner input
+ *                 receives focus, with detail {value}
  * - submit:       bubbling, composed CustomEvent fired when Enter is pressed,
  *                 with detail {value}
  */
@@ -223,6 +225,20 @@ export class UIInput extends HTMLElement {
           bubbles: true,
           composed: true,
           detail: { value: newValue },
+        })
+      );
+    });
+
+    // Native focus does not bubble and cannot cross the shadow boundary, so
+    // re-dispatch a composed CustomEvent from the host (mirroring the change
+    // and submit events) to make the declared "focus" capability reachable.
+    this.inputEl.addEventListener("focus", (e: Event) => {
+      e.stopPropagation();
+      this.dispatchEvent(
+        new CustomEvent("focus", {
+          bubbles: true,
+          composed: true,
+          detail: { value: this.inputEl.value },
         })
       );
     });
