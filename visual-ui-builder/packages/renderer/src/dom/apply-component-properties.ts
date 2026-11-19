@@ -176,6 +176,34 @@ const inputAdapter: PropertyAdapter = (element, properties) => {
   if (properties.defaultValue !== undefined) {
     element.setAttribute("default-value", String(properties.defaultValue));
   }
+
+  // Data-source properties: written as data attributes so a data-binding layer
+  // can read them and perform a fetch to populate data-bound-options. The
+  // Input renders those suggestions in its shadow-DOM datalist.
+  if (properties.dataSourceUrl !== undefined) {
+    element.setAttribute("data-source-url", String(properties.dataSourceUrl));
+  }
+
+  if (properties.dataSourceResponsePath !== undefined) {
+    element.setAttribute(
+      "data-source-response-path",
+      String(properties.dataSourceResponsePath)
+    );
+  }
+
+  if (properties.dataSourceLabelField !== undefined) {
+    element.setAttribute(
+      "data-source-label-field",
+      String(properties.dataSourceLabelField)
+    );
+  }
+
+  if (properties.dataSourceValueField !== undefined) {
+    element.setAttribute(
+      "data-source-value-field",
+      String(properties.dataSourceValueField)
+    );
+  }
 };
 
 const adapters = new Map<string, PropertyAdapter>([

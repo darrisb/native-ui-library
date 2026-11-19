@@ -94,5 +94,34 @@
       "dataSourceLabelField": "name",
       "dataSourceValueField": "id"
     }
+  },
+  {
+    "id": "input-search",
+    "type": "input",
+    "properties": {
+      "label": "Search",
+      "placeholder": "Search products…",
+      "name": "q",
+      "inputType": "search",
+      "required": false,
+      "disabled": false,
+      "readonly": false,
+      "maxLength": 80,
+      "defaultValue": "",
+      "dataSourceUrl": "/api/search/suggestions?fields=title,query",
+      "dataSourceResponsePath": "suggestions",
+      "dataSourceLabelField": "title",
+      "dataSourceValueField": "query"
+    },
+    "actions": [
+      {
+        "id": "action-search-submit",
+        "event": "submit",
+        "type": "navigate",
+        "config": {
+          "url": "/search?q={value}"
+        }
+      }
+    ]
   }
 ]

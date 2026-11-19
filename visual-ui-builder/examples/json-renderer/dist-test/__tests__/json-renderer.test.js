@@ -671,9 +671,8 @@ test("Dropdown required and disabled properties are applied", () => {
     assertEqual(dropdown.getAttribute("disabled"), "");
 });
 await asyncTest("REST dropdown resolves data source via mock fetch and sets data-bound-options", async () => {
-    const originalFetch = globalThis.fetch;
     // Inject a mock fetch that returns customer data
-    globalThis.fetch = async (_url) => ({
+    const mockFetch = (async (_url) => ({
         ok: true,
         json: async () => ({
             items: [
@@ -681,51 +680,47 @@ await asyncTest("REST dropdown resolves data source via mock fetch and sets data
                 { id: "c-102", name: "Globex Inc" },
             ],
         }),
-    });
-    try {
-        const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
-        const document = [
-            {
-                id: "dropdown-rest",
-                type: "dropdown",
-                properties: {
-                    label: "Customer",
-                    placeholder: "Select customer…",
-                    name: "customer",
-                    dataSourceUrl: "/api/data/customers?fields=id,name",
-                    dataSourceResponsePath: "items",
-                    dataSourceLabelField: "name",
-                    dataSourceValueField: "id",
-                },
+    }));
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-rest",
+            type: "dropdown",
+            properties: {
+                label: "Customer",
+                placeholder: "Select customer…",
+                name: "customer",
+                dataSourceUrl: "/api/data/customers?fields=id,name",
+                dataSourceResponsePath: "items",
+                dataSourceLabelField: "name",
+                dataSourceValueField: "id",
             },
-        ];
-        const result = renderDocument(document, {
-            metadataRegistry,
-            nativeRegistry,
-        });
-        assertEqual(result.errors.length, 0);
-        const dropdown = result.elements[0];
-        // Create a mock container and attach the dropdown
-        const container = new MockElement("div");
-        container.appendChild(dropdown);
-        // Resolve data sources (uses mock fetch)
-        await resolveDataSourceDropdowns(container);
-        // Verify data-bound-options is set on the dropdown
-        const boundOptionsRaw = dropdown.getAttribute("data-bound-options");
-        assertTrue(boundOptionsRaw !== null, "data-bound-options should be set after resolving REST data source");
-        const boundOptions = JSON.parse(boundOptionsRaw);
-        assertEqual(boundOptions.length, 2);
-        assertEqual(boundOptions[0].value, "c-101");
-        assertEqual(boundOptions[0].label, "Acme Corp");
-        assertEqual(boundOptions[1].value, "c-102");
-        assertEqual(boundOptions[1].label, "Globex Inc");
-        // Verify data-ds-status was cleared (non-empty result)
-        assertEqual(dropdown.getAttribute("data-ds-status"), null);
-    }
-    finally {
-        // Restore original fetch
-        globalThis.fetch = originalFetch;
-    }
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    const dropdown = result.elements[0];
+    // Create a mock container and attach the dropdown
+    const container = new MockElement("div");
+    container.appendChild(dropdown);
+    // Resolve data sources through the injected mock fetch
+    await resolveDataSourceDropdowns(container, {
+        fetch: mockFetch,
+    });
+    // Verify data-bound-options is set on the dropdown
+    const boundOptionsRaw = dropdown.getAttribute("data-bound-options");
+    assertTrue(boundOptionsRaw !== null, "data-bound-options should be set after resolving REST data source");
+    const boundOptions = JSON.parse(boundOptionsRaw);
+    assertEqual(boundOptions.length, 2);
+    assertEqual(boundOptions[0].value, "c-101");
+    assertEqual(boundOptions[0].label, "Acme Corp");
+    assertEqual(boundOptions[1].value, "c-102");
+    assertEqual(boundOptions[1].label, "Globex Inc");
+    // Verify data-ds-status was cleared (non-empty result)
+    assertEqual(dropdown.getAttribute("data-ds-status"), null);
 });
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;
