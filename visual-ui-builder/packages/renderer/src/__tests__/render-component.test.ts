@@ -95,7 +95,13 @@ function installMockDom(): void {
 
   globals.customElements = {
     get: (name: string): object | undefined => {
-      const defined = new Set(["ui-card", "ui-text", "ui-button", "ui-dropdown"]);
+      const defined = new Set([
+      "ui-card",
+      "ui-text",
+      "ui-button",
+      "ui-dropdown",
+      "ui-input",
+    ]);
       return defined.has(name) ? {} : undefined;
     },
     define: (): void => {},
@@ -115,6 +121,7 @@ const {
   registerText,
   registerButton,
   registerDropdown,
+  registerInput,
 } = await import("@visual-ui/components");
 const { renderComponent } = await import("../dom/render-component.js");
 
@@ -140,6 +147,7 @@ function createRegistries() {
   registerText(metadataRegistry, nativeRegistry);
   registerButton(metadataRegistry, nativeRegistry);
   registerDropdown(metadataRegistry, nativeRegistry);
+  registerInput(metadataRegistry, nativeRegistry);
   return { metadataRegistry, nativeRegistry };
 }
 
@@ -864,6 +872,79 @@ test("Calling registerDropdown twice does not throw", () => {
     threw = true;
   }
   assertTrue(!threw, "Expected second registerDropdown call to not throw.");
+});
+
+// -- Input tests --
+
+test("Input renders as ui-input element with mapped properties", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "input-1",
+    type: "input",
+    properties: {
+      label: "Search",
+      placeholder: "Type to search",
+      name: "search",
+      inputType: "search",
+      required: true,
+      disabled: false,
+      readonly: true,
+      maxLength: 40,
+      defaultValue: "shoes",
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-input");
+  assertEqual(element.getAttribute("label"), "Search");
+  assertEqual(element.getAttribute("placeholder"), "Type to search");
+  assertEqual(element.getAttribute("name"), "search");
+  assertEqual(element.getAttribute("input-type"), "search");
+  assertEqual(element.getAttribute("required"), "");
+  assertEqual(element.getAttribute("disabled"), null);
+  assertEqual(element.getAttribute("readonly"), "");
+  assertEqual(element.getAttribute("max-length"), "40");
+  assertEqual(element.getAttribute("default-value"), "shoes");
+});
+
+test("Input boolean properties default to no attributes", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "input-2",
+    type: "input",
+    properties: { label: "Email", required: false, disabled: false, readonly: false },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-input");
+  assertEqual(element.getAttribute("required"), null);
+  assertEqual(element.getAttribute("disabled"), null);
+  assertEqual(element.getAttribute("readonly"), null);
+});
+
+test("Input with children is rejected", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "input-parent",
+    type: "input",
+    properties: { label: "Parent" },
+    children: [
+      {
+        id: "text-child",
+        type: "text",
+        properties: { content: "Child" },
+      },
+    ],
+  };
+  let threw = false;
+  try {
+    renderComponent(instance, { metadataRegistry, nativeRegistry });
+  } catch (error) {
+    threw = true;
+    assertTrue(
+      error instanceof Error && error.message.includes("does not allow children"),
+      `Expected disallow-children error, got: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  assertTrue(threw, "Expected Input with children to throw.");
 });
 
 const passed = results.filter((result) => result.passed).length;

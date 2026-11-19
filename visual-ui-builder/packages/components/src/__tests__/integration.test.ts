@@ -91,6 +91,7 @@ const {
   NativeComponentRegistry,
   registerButton,
   registerCard,
+  registerInput,
   registerNativeComponents,
   registerText,
 } = await import("../registry/index.js");
@@ -265,7 +266,7 @@ test("validates nested children recursively", () => {
   );
 });
 
-test("registerNativeComponents registers Card, Text, Button, and Dropdown", () => {
+test("registerNativeComponents registers Card, Text, Button, Dropdown, and Input", () => {
   const metadataRegistry = new ComponentRegistry();
   const nativeRegistry = new NativeComponentRegistry();
   registerNativeComponents(metadataRegistry, nativeRegistry);
@@ -277,6 +278,8 @@ test("registerNativeComponents registers Card, Text, Button, and Dropdown", () =
   assertEqual(nativeRegistry.lookupTag("button"), "ui-button");
   assertEqual(metadataRegistry.lookup("dropdown")?.type, "dropdown");
   assertEqual(nativeRegistry.lookupTag("dropdown"), "ui-dropdown");
+  assertEqual(metadataRegistry.lookup("input")?.type, "input");
+  assertEqual(nativeRegistry.lookupTag("input"), "ui-input");
 });
 
 test("shared registry is used by default", () => {
@@ -343,6 +346,28 @@ test("registerUIButton is defined", () => {
 
 test("UIButton class is defined", () => {
   assertTrue(typeof UIButton === "function");
+});
+
+test("registers Input metadata", () => {
+  const metadataRegistry = new ComponentRegistry();
+  registerInput(metadataRegistry);
+  assertEqual(metadataRegistry.lookup("input")?.type, "input");
+});
+
+test("registers native input tag mapping", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerInput(metadataRegistry, nativeRegistry);
+  assertEqual(nativeRegistry.lookupTag("input"), "ui-input");
+});
+
+test("Input registration is idempotent", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerInput(metadataRegistry, nativeRegistry);
+  registerInput(metadataRegistry, nativeRegistry);
+  assertEqual(metadataRegistry.list().length, 1);
+  assertEqual(nativeRegistry.list().length, 1);
 });
 
 const passed = results.filter((result) => result.passed).length;

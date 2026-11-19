@@ -6,6 +6,7 @@ import {
   registerText,
   registerButton,
   registerDropdown,
+  registerInput,
 } from "@visual-ui/components";
 
 /**
@@ -34,4 +35,5 @@ export function registerBuilderNativeComponents(
   registerText(builderComponentRegistry, nativeRegistry);
   registerButton(builderComponentRegistry, nativeRegistry);
   registerDropdown(builderComponentRegistry, nativeRegistry);
+  registerInput(builderComponentRegistry, nativeRegistry);
 }

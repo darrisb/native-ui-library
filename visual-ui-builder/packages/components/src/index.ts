@@ -10,6 +10,7 @@ export {
   registerButton,
   registerCard,
   registerDropdown,
+  registerInput,
   registerNativeComponents,
   registerText,
 } from "./registry/index.js";

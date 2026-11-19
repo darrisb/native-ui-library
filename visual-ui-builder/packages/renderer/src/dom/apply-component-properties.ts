@@ -130,11 +130,56 @@ const dropdownAdapter: PropertyAdapter = (element, properties) => {
   }
 };
 
+const inputAdapter: PropertyAdapter = (element, properties) => {
+  if (properties.label !== undefined) {
+    element.setAttribute("label", String(properties.label));
+  }
+
+  if (properties.placeholder !== undefined) {
+    element.setAttribute("placeholder", String(properties.placeholder));
+  }
+
+  if (properties.name !== undefined) {
+    element.setAttribute("name", String(properties.name));
+  }
+
+  if (properties.inputType !== undefined) {
+    element.setAttribute("input-type", String(properties.inputType));
+  }
+
+  if (properties.required === true) {
+    element.setAttribute("required", "");
+  } else if (properties.required === false) {
+    element.removeAttribute("required");
+  }
+
+  if (properties.disabled === true) {
+    element.setAttribute("disabled", "");
+  } else if (properties.disabled === false) {
+    element.removeAttribute("disabled");
+  }
+
+  if (properties.readonly === true) {
+    element.setAttribute("readonly", "");
+  } else if (properties.readonly === false) {
+    element.removeAttribute("readonly");
+  }
+
+  if (properties.maxLength !== undefined) {
+    element.setAttribute("max-length", String(properties.maxLength));
+  }
+
+  if (properties.defaultValue !== undefined) {
+    element.setAttribute("default-value", String(properties.defaultValue));
+  }
+};
+
 const adapters = new Map<string, PropertyAdapter>([
   ["card", cardAdapter],
   ["text", textAdapter],
   ["button", buttonAdapter],
   ["dropdown", dropdownAdapter],
+  ["input", inputAdapter],
 ]);
 
 export function applyComponentProperties(

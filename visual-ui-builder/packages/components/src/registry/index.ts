@@ -6,6 +6,7 @@ export {
   registerButton,
   registerCard,
   registerDropdown,
+  registerInput,
   registerNativeComponents,
   registerText,
 } from "./register-native-components.js";
