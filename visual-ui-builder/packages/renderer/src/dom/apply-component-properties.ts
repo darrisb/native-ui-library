@@ -165,7 +165,11 @@ const inputAdapter: PropertyAdapter = (element, properties) => {
     element.removeAttribute("readonly");
   }
 
-  if (properties.maxLength !== undefined) {
+  if (
+    typeof properties.maxLength === "number" &&
+    Number.isInteger(properties.maxLength) &&
+    properties.maxLength > 0
+  ) {
     element.setAttribute("max-length", String(properties.maxLength));
   }
 

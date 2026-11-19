@@ -874,6 +874,19 @@ test("Calling registerDropdown twice does not throw", () => {
   assertTrue(!threw, "Expected second registerDropdown call to not throw.");
 });
 
+test("Calling registerInput twice does not throw", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerInput(metadataRegistry, nativeRegistry);
+  let threw = false;
+  try {
+    registerInput(metadataRegistry, nativeRegistry);
+  } catch {
+    threw = true;
+  }
+  assertTrue(!threw, "Expected second registerInput call to not throw.");
+});
+
 // -- Input tests --
 
 test("Input renders as ui-input element with mapped properties", () => {
@@ -918,6 +931,49 @@ test("Input boolean properties default to no attributes", () => {
   assertEqual(element.getAttribute("required"), null);
   assertEqual(element.getAttribute("disabled"), null);
   assertEqual(element.getAttribute("readonly"), null);
+});
+
+test("Input maxLength is rendered only for positive integers", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const zero = renderComponent(
+    {
+      id: "input-max-zero",
+      type: "input",
+      properties: { maxLength: 0 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(zero.getAttribute("max-length"), null);
+
+  const negative = renderComponent(
+    {
+      id: "input-max-negative",
+      type: "input",
+      properties: { maxLength: -5 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(negative.getAttribute("max-length"), null);
+
+  const fractional = renderComponent(
+    {
+      id: "input-max-fractional",
+      type: "input",
+      properties: { maxLength: 2.5 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(fractional.getAttribute("max-length"), null);
+
+  const positive = renderComponent(
+    {
+      id: "input-max-positive",
+      type: "input",
+      properties: { maxLength: 25 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(positive.getAttribute("max-length"), "25");
 });
 
 test("Input with children is rejected", () => {
