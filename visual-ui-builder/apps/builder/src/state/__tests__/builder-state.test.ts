@@ -1316,6 +1316,276 @@ test("findComponentLocationById locates root and nested positions", () => {
   assertEqual(findComponentLocationById(document, "missing-id"), undefined);
 });
 
+// -----------------------------------------------------------------------------
+// Undo/redo history.
+// -----------------------------------------------------------------------------
+
+function createStateWithCard(
+  id: string,
+  properties: Record<string, string | number | boolean> = {}
+) {
+  return createBuilderState({
+    rootInstances: [createCardInstance(id, properties)],
+  });
+}
+
+test("Undo with no history leaves state untouched and notifies nobody", () => {
+  const state = createBuilderState();
+  const before = state.getDocument();
+  let documentCalls = 0;
+  let selectionCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+  state.subscribeToSelection(() => {
+    selectionCalls += 1;
+  });
+
+  state.undo();
+
+  assertEqual(state.getDocument(), before);
+  assertTrue(!state.canUndo());
+  assertTrue(!state.canRedo());
+  assertEqual(documentCalls, 0);
+  assertEqual(selectionCalls, 0);
+});
+
+test("Redo with no future leaves state untouched and notifies nobody", () => {
+  const state = createBuilderState();
+  const before = state.getDocument();
+  let documentCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+
+  state.redo();
+
+  assertEqual(state.getDocument(), before);
+  assertTrue(!state.canRedo());
+  assertEqual(documentCalls, 0);
+});
+
+test("Undo and redo notify document subscribers once each", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties(
+    "card-1",
+    { title: "Updated" },
+    selectionRegistry
+  );
+  let documentCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+
+  state.undo();
+  assertEqual(documentCalls, 1);
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+
+  state.redo();
+  assertEqual(documentCalls, 2);
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "Updated"
+  );
+});
+
+test("New edit after undo discards the redo future", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties("card-1", { title: "First" }, selectionRegistry);
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+  assertTrue(state.canRedo(), "Expected redo before the new edit.");
+
+  state.updateInstanceProperties(
+    "card-1",
+    { title: "Second" },
+    selectionRegistry
+  );
+
+  assertTrue(!state.canRedo(), "A new edit should discard the redo future.");
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+  assertTrue(!state.canUndo());
+});
+
+test("Undo clears selection when the selected instance disappears", () => {
+  const state = createStateWithCard("card-1");
+  state.addRootInstance(createCardInstance("card-2"));
+  state.selectInstance("card-2");
+  let documentCalls = 0;
+  let selectionCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+  state.subscribeToSelection(() => {
+    selectionCalls += 1;
+  });
+
+  state.undo();
+
+  assertEqual(state.getSelectedInstanceId(), null);
+  assertEqual(documentCalls, 1);
+  assertEqual(selectionCalls, 1);
+});
+
+test("Undo preserves selection when the selected instance remains", () => {
+  const state = createStateWithCard("card-1");
+  state.addRootInstance(createCardInstance("card-2"));
+  state.selectInstance("card-1");
+  let documentCalls = 0;
+  let selectionCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+  state.subscribeToSelection(() => {
+    selectionCalls += 1;
+  });
+
+  state.undo();
+
+  assertEqual(state.getSelectedInstanceId(), "card-1");
+  assertEqual(documentCalls, 1);
+  assertEqual(selectionCalls, 0);
+});
+
+test("Consecutive edits to the same property coalesce into one undo step", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties("card-1", { title: "H" }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { title: "He" }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { title: "Hello" }, selectionRegistry);
+
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "Hello"
+  );
+  assertTrue(state.canUndo());
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+  assertTrue(!state.canUndo());
+});
+
+test("Redo restores the full coalesced value", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties("card-1", { title: "H" }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { title: "He" }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { title: "Hello" }, selectionRegistry);
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+
+  state.redo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "Hello"
+  );
+  assertTrue(state.canUndo());
+});
+
+test("Typing a multi-digit number is one undoable step", () => {
+  const state = createStateWithCard("card-1", { padding: 16 });
+  state.updateInstanceProperties("card-1", { padding: 1 }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { padding: 12 }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { padding: 120 }, selectionRegistry);
+
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.padding,
+    120
+  );
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.padding,
+    16
+  );
+  assertTrue(!state.canUndo());
+});
+
+test("Edits to different properties create separate undo steps", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties("card-1", { title: "Hello" }, selectionRegistry);
+  state.updateInstanceProperties("card-1", { padding: 24 }, selectionRegistry);
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "Hello"
+  );
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.padding,
+    16
+  );
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+});
+
+test("A structural mutation starts a new undo step after property edits", () => {
+  const state = createStateWithCard("card-1");
+  state.updateInstanceProperties("card-1", { title: "H" }, selectionRegistry);
+  state.addRootInstance(createCardInstance("card-2"));
+  state.updateInstanceProperties("card-1", { title: "He" }, selectionRegistry);
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "H",
+    "The title edit after the structural mutation should be its own step."
+  );
+  assertEqual(state.getDocument().rootInstances.length, 2);
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    "H"
+  );
+  assertEqual(state.getDocument().rootInstances.length, 1);
+
+  state.undo();
+  assertEqual(
+    findComponentById(state.getDocument(), "card-1")!.properties.title,
+    ""
+  );
+});
+
+test("No-op property update records no history and notifies nobody", () => {
+  const state = createStateWithCard("card-1");
+  const before = state.getDocument();
+  let documentCalls = 0;
+  state.subscribe(() => {
+    documentCalls += 1;
+  });
+
+  state.updateInstanceProperties("card-1", { title: "" }, selectionRegistry);
+  state.updateInstanceProperties(
+    "card-1",
+    { description: undefined },
+    selectionRegistry
+  );
+
+  assertEqual(state.getDocument(), before);
+  assertEqual(documentCalls, 0);
+  assertTrue(!state.canUndo());
+});
+
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;
 

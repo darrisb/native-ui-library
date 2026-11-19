@@ -22,6 +22,12 @@ export type SelectionChangeListener = (
   selectedInstanceId: string | null
 ) => void;
 
+/** Identifies the instance and property affected by a property edit. */
+interface PropertyEditKey {
+  readonly id: string;
+  readonly name: string;
+}
+
 /** Minimal immutable builder state with subscription support. */
 export interface BuilderState {
   /** Returns the current document snapshot. */
@@ -174,6 +180,7 @@ export function createBuilderState(
 ): BuilderState {
   let document: BuilderDocument = initialDocument;
   let history: DocumentHistory = createDocumentHistory(initialDocument);
+  let lastPropertyEdit: PropertyEditKey | null = null;
   let selectedInstanceId: string | null = null;
   const documentListeners = new Set<DocumentChangeListener>();
   const selectionListeners = new Set<SelectionChangeListener>();
@@ -191,13 +198,28 @@ export function createBuilderState(
   }
 
   /**
-   * Records a new document in history after a successful mutation.
+   * Commits a document mutation to history.
    *
-   * The history module ignores identical references, so this is safe to call
-   * after every mutation.
+   * Consecutive single-property edits to the same instance and property are
+   * coalesced into one undoable step, so typing a multi-character value does
+   * not create a history entry per keystroke. Any other mutation records a
+   * new step, which clears the redo history.
    */
-  function recordHistory(nextDocument: BuilderDocument): void {
-    history = history.record(nextDocument);
+  function commitHistory(
+    nextDocument: BuilderDocument,
+    propertyEdit: PropertyEditKey | null
+  ): void {
+    if (
+      propertyEdit !== null &&
+      lastPropertyEdit !== null &&
+      lastPropertyEdit.id === propertyEdit.id &&
+      lastPropertyEdit.name === propertyEdit.name
+    ) {
+      history = history.replacePresent(nextDocument);
+    } else {
+      history = history.record(nextDocument);
+    }
+    lastPropertyEdit = propertyEdit;
   }
 
   /**
@@ -209,6 +231,10 @@ export function createBuilderState(
    * subscribers are notified exactly once for each changed channel.
    */
   function restoreFromHistory(nextHistory: DocumentHistory): void {
+    // Undo/redo ends any in-progress property edit session, so a following
+    // edit starts a fresh undoable step.
+    lastPropertyEdit = null;
+
     if (nextHistory.present === document) {
       return;
     }
@@ -242,7 +268,7 @@ export function createBuilderState(
     addRootInstance(instance: ComponentInstance): void {
       const nextDocument = addRootInstance(document, instance);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -276,7 +302,7 @@ export function createBuilderState(
 
       const nextDocument = insertRootInstanceAt(document, instance, index);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -322,7 +348,7 @@ export function createBuilderState(
         index
       );
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -368,7 +394,7 @@ export function createBuilderState(
       }
 
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -395,14 +421,23 @@ export function createBuilderState(
         throw new Error(`Instance "${id}" does not exist.`);
       }
 
+      const patchNames = Object.keys(patch);
+      const propertyEdit: PropertyEditKey | null =
+        patchNames.length === 1 ? { id, name: patchNames[0] } : null;
+
       const nextProperties: Record<string, string | number | boolean> = {
         ...target.properties,
       };
+      let changed = false;
       for (const [name, value] of Object.entries(patch)) {
         if (value === undefined) {
-          delete nextProperties[name];
-        } else {
+          if (name in nextProperties) {
+            delete nextProperties[name];
+            changed = true;
+          }
+        } else if (nextProperties[name] !== value) {
           nextProperties[name] = value;
+          changed = true;
         }
       }
 
@@ -417,13 +452,17 @@ export function createBuilderState(
         throw new Error(`Invalid property update: ${messages}`);
       }
 
+      if (!changed) {
+        return;
+      }
+
       const nextDocument = updateComponentById(
         document,
         id,
         () => updatedInstance
       );
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, propertyEdit);
       notifyDocument();
     },
 

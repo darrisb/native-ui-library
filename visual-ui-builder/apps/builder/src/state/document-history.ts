@@ -38,6 +38,18 @@ export interface DocumentHistory {
   record(document: BuilderDocument): DocumentHistory;
 
   /**
+   * Replaces the present snapshot without moving the previous present into the
+   * past and without clearing the future.
+   *
+   * Used to coalesce consecutive edits belonging to a single logical change,
+   * such as typing a multi-character value, so they occupy one undoable step.
+   *
+   * If the supplied document is the same reference as the present snapshot,
+   * the original history is returned unchanged.
+   */
+  replacePresent(document: BuilderDocument): DocumentHistory;
+
+  /**
    * Moves the present into the future and restores the most recent past
    * snapshot as the new present.
    *
@@ -89,6 +101,13 @@ function createHistoryObject(
           : nextPast;
 
       return createHistoryObject(cappedPast, document, []);
+    },
+    replacePresent(document: BuilderDocument): DocumentHistory {
+      if (document === present) {
+        return history;
+      }
+
+      return createHistoryObject(past, document, future);
     },
     undo(): DocumentHistory {
       if (past.length === 0) {

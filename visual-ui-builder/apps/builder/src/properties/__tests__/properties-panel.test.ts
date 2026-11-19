@@ -1051,6 +1051,51 @@ test("Undo and redo restore each input property change", () => {
   assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
 });
 
+test("Typing a multi-character value is one undoable step", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+  for (const value of ["h", "he", "hel", "hell", "hello"]) {
+    defaultValueControl.value = value;
+    defaultValueControl.dispatchEvent({ type: "input" } as unknown as Event);
+  }
+
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+  assertTrue(state.canUndo(), "Expected undo to be available.");
+
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").defaultValue, "");
+  assertTrue(state.canRedo(), "Expected redo to be available.");
+});
+
+test("Typing a multi-digit number is one undoable step", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  for (const value of ["2", "20"]) {
+    maxLengthControl.value = value;
+    maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+  }
+
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertTrue(state.canUndo(), "Expected undo to be available.");
+
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").maxLength, undefined);
+});
+
 test("Input edits serialize to and from JSON", () => {
   const state = createBuilderState();
   state.addRootInstance(createInputInstance("input-1"));
