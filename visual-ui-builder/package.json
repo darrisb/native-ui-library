@@ -14,7 +14,10 @@
     "typecheck": "tsc --build",
     "dev:json-renderer": "vite --config examples/json-renderer/vite.config.ts",
     "build:json-renderer": "vite build --config examples/json-renderer/vite.config.ts",
-    "test:json-renderer": "tsc --build examples/json-renderer/tsconfig.json && node examples/json-renderer/dist-test/__tests__/json-renderer.test.js && node examples/json-renderer/dist-test/__tests__/input-workflow.test.js"
+    "test:json-renderer": "tsc --build examples/json-renderer/tsconfig.json && node examples/json-renderer/dist-test/__tests__/json-renderer.test.js && node examples/json-renderer/dist-test/__tests__/input-workflow.test.js",
+    "dev:schema-pages": "vite --config examples/schema-pages/vite.config.ts",
+    "build:schema-pages": "vite build --config examples/schema-pages/vite.config.ts",
+    "test:schema-pages": "tsc --build examples/schema-pages/tsconfig.json && node examples/schema-pages/dist-test/__tests__/schema-pages.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

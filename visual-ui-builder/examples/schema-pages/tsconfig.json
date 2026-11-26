@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-test",
+    "rootDir": ".",
+    "composite": true
+  },
+  "include": ["./**/*.ts", "./*.json"],
+  "exclude": ["dist", "dist-test", "node_modules"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/schema" },
+    { "path": "../../packages/components" },
+    { "path": "../../packages/renderer" }
+  ]
+}

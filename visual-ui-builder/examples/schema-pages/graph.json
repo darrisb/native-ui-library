@@ -1,0 +1,42 @@
+{
+  "specVersion": "1.0",
+  "sources": ["commerce", "crm"],
+  "entities": [
+    {
+      "id": "commerce.orders",
+      "source": "commerce",
+      "name": "orders",
+      "kind": "table",
+      "label": "Orders",
+      "keyColumns": ["id"],
+      "columns": [
+        { "id": "commerce.orders.id", "name": "id", "type": "integer", "category": "NUMBER", "nullable": false, "label": "Order ID" },
+        { "id": "commerce.orders.customer_id", "name": "customer_id", "type": "integer", "category": "NUMBER", "nullable": false, "label": "Customer" },
+        { "id": "commerce.orders.status", "name": "status", "type": "varchar", "category": "TEXT", "nullable": false, "label": "Status" },
+        { "id": "commerce.orders.total", "name": "total", "type": "decimal", "category": "NUMBER", "nullable": false, "label": "Total" }
+      ]
+    },
+    {
+      "id": "crm.customers",
+      "source": "crm",
+      "name": "customers",
+      "kind": "table",
+      "label": "Customers",
+      "keyColumns": ["id"],
+      "columns": [
+        { "id": "crm.customers.id", "name": "id", "type": "integer", "category": "NUMBER", "nullable": false, "label": "Customer ID" },
+        { "id": "crm.customers.name", "name": "name", "type": "varchar", "category": "TEXT", "nullable": false, "label": "Name" }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "orders-customer",
+      "from": "commerce.orders.customer_id",
+      "to": "crm.customers.id",
+      "origin": "foreign-key",
+      "scope": "cross-source",
+      "status": "confirmed"
+    }
+  ]
+}

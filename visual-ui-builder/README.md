@@ -36,3 +36,11 @@ Schema to Entity exposes a source's current version as `schemaVersion` from
 `GET /api/data/{source}`. Pass those values to list-page generation through
 `schemaVersions`; generated REST sources compare them with the
 `X-Schema-Version` header returned by data endpoints.
+
+## Schema graph list-page example
+
+`npm run dev:schema-pages` runs a standalone, server-free example that turns a
+two-source Schema to Entity graph into a working read-only Orders list with a
+Customer relationship filter and pagination. See
+[`examples/schema-pages/README.md`](examples/schema-pages/README.md) for mock
+data details and instructions for connecting a running Schema to Entity server.
