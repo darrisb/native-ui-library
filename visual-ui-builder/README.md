@@ -29,3 +29,10 @@ npm run dev
 - `npm run dev` — Start the builder development server
 - `npm run build` — Build all workspace packages
 - `npm run typecheck` — Run TypeScript checks across workspaces
+
+## Schema versions
+
+Schema to Entity exposes a source's current version as `schemaVersion` from
+`GET /api/data/{source}`. Pass those values to list-page generation through
+`schemaVersions`; generated REST sources compare them with the
+`X-Schema-Version` header returned by data endpoints.

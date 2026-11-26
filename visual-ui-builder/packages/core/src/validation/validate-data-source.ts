@@ -42,6 +42,9 @@ const MAX_QUERY_KEYS = 30;
 /** Maximum length of one query parameter value. */
 const MAX_QUERY_VALUE_LENGTH = 500;
 
+/** Maximum length of a remembered source schema version. */
+const MAX_SCHEMA_VERSION_LENGTH = 64;
+
 /**
  * URL schemes that must never appear in a declarative data source URL. These
  * schemes can execute scripts, render arbitrary content, or exfiltrate data,
@@ -296,6 +299,17 @@ function validateRestDataSource(
     errors.push({
       path: `${path}.responsePath`,
       message: `Data source "responsePath" is not a safe path.`
+    });
+  }
+
+  if (
+    dataSource.schemaVersion !== undefined &&
+    (typeof dataSource.schemaVersion !== "string" ||
+      dataSource.schemaVersion.length > MAX_SCHEMA_VERSION_LENGTH)
+  ) {
+    errors.push({
+      path: `${path}.schemaVersion`,
+      message: `Data source "schemaVersion" must be a string of at most ${MAX_SCHEMA_VERSION_LENGTH} characters.`
     });
   }
 

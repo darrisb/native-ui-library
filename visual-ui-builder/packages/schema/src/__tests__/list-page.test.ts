@@ -73,6 +73,18 @@ assert(dropdown.dataSource.mapping?.value === "id", "Option value should map to 
 assert(dropdown.dataSource.mapping?.label === "email", "Option label should map to the chosen text column");
 
 validateDocument(first);
+
+const versioned = flatten(generateListPage(graph, "commerce.orders", {
+  apiBaseUrl: "/backend",
+  schemaVersions: { commerce: "commerce-v3", crm: "crm-v7" },
+}));
+const versionedDropdown = versioned.find(({ type }) => type === "dropdown");
+const versionedTable = versioned.find(({ type }) => type === "table");
+assert(versionedDropdown?.dataSource?.type === "rest", "Versioned dropdown should have a REST source");
+assert(versionedDropdown.dataSource.schemaVersion === "crm-v7", "Dropdown should carry its target source version");
+assert(versionedTable?.dataSource?.type === "rest", "Versioned table should have a REST source");
+assert(versionedTable.dataSource.schemaVersion === "commerce-v3", "Table should carry its entity source version");
+
 const second = generateListPage(graph, "commerce.orders", { apiBaseUrl: "/backend" });
 assert(JSON.stringify(first) === JSON.stringify(second), "Generation should be stable across runs");
 

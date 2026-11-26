@@ -540,6 +540,8 @@ export class DataSourceRuntime {
       return;
     }
 
+    this.updateSchemaStatus(element, dataSource.schemaVersion, result.schemaVersion);
+
     const mapped = extractAndMapRecords(
       result.data,
       dataSource.responsePath,
@@ -571,6 +573,23 @@ export class DataSourceRuntime {
       requestEpoch,
       instanceEpoch
     );
+  }
+
+  /** Marks and announces a response produced from a different source schema. */
+  private updateSchemaStatus(
+    element: HTMLElement,
+    expected: string | undefined,
+    actual: string | undefined
+  ): void {
+    if (expected !== undefined && actual !== undefined && actual !== expected) {
+      element.setAttribute("data-ds-schema", "stale");
+      element.dispatchEvent(new CustomEvent("schema-changed", {
+        bubbles: true,
+        detail: { expected, actual },
+      }));
+      return;
+    }
+    element.removeAttribute("data-ds-schema");
   }
 
   private applyBindings(

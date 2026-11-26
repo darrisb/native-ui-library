@@ -117,6 +117,23 @@ test("a relative URL is accepted", () => {
   assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
 });
 
+test("schemaVersion accepts strings of at most 64 characters", () => {
+  for (const schemaVersion of ["", "v".repeat(64)]) {
+    const valid = validateDataSourceContracts(
+      restDataSource({ schemaVersion }), undefined, "root", []
+    );
+    assertEqual(valid.length, 0);
+  }
+
+  for (const schemaVersion of ["v".repeat(65), 42 as unknown as string]) {
+    const errors = validateDataSourceContracts(
+      restDataSource({ schemaVersion }), undefined, "root", []
+    );
+    assertEqual(errors.length, 1);
+    assertIncludes(errors[0]!.path, "schemaVersion");
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Legacy JSON with no dataSource stays valid
 // ---------------------------------------------------------------------------

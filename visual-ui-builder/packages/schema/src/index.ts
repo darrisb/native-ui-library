@@ -5,6 +5,7 @@ export type {
   GraphRelationship,
   GraphRelationshipStatus,
   SchemaGraph,
+  SchemaVersions,
 } from "./types.js";
 
 export {

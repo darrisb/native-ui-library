@@ -6,13 +6,15 @@ import {
 } from "@visual-ui/core";
 
 import { entityById, usableRelationships } from "./parse.js";
-import type { GraphColumn, GraphEntity, SchemaGraph } from "./types.js";
+import type { GraphColumn, GraphEntity, SchemaGraph, SchemaVersions } from "./types.js";
 
 export interface GenerateListPageOptions {
   readonly apiBaseUrl: string;
   readonly pageSize?: number;
   readonly maxColumns?: number;
   readonly maxTextFilters?: number;
+  /** Versions returned by `GET /api/data/{source}`, keyed by source name. */
+  readonly schemaVersions?: SchemaVersions;
 }
 
 const LABEL_COLUMN_NAMES = new Set(["name", "title", "label", "email"]);
@@ -49,11 +51,13 @@ function restSource(
   url: string,
   query: Readonly<Record<string, string>>,
   mapping?: Readonly<Record<string, string>>,
+  schemaVersion?: string,
 ): RestDataSource {
   return {
     type: "rest",
     method: "GET",
     url,
+    ...(schemaVersion === undefined ? {} : { schemaVersion }),
     responsePath: "items",
     ...(mapping === undefined ? {} : { mapping }),
     query,
@@ -131,6 +135,7 @@ export function generateListPage(
         dataUrl(options.apiBaseUrl, target.source, target.name),
         { fields: `${key},${label.name}`, limit: "200" },
         { value: key, label: label.name },
+        options.schemaVersions?.[target.source],
       ),
       bindings: [{ target: "options" }],
     });
@@ -170,6 +175,8 @@ export function generateListPage(
     dataSource: restSource(
       dataUrl(options.apiBaseUrl, entity.source, entity.name),
       { limit: String(pageSize) },
+      undefined,
+      options.schemaVersions?.[entity.source],
     ),
     bindings: [{ target: "rows" }],
   };

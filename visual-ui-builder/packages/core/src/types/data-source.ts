@@ -98,6 +98,15 @@ export interface RestDataSource {
   readonly url: string;
 
   /**
+   * Optional version of the source schema this data source was generated
+   * from. At runtime it is compared with the server's `X-Schema-Version`
+   * response header so generated pages can flag stale schema assumptions.
+   *
+   * Must be a string of at most 64 characters.
+   */
+  readonly schemaVersion?: string;
+
+  /**
    * Optional safe path into the response payload to extract the collection or
    * object of records. When omitted the entire response body is used.
    *

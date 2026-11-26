@@ -42,6 +42,8 @@ export interface RestFetchError {
 export interface RestFetchSuccess<T> {
   readonly ok: true;
   readonly data: T;
+  /** Schema version reported by the endpoint, when present. */
+  readonly schemaVersion?: string;
 }
 
 /** Failed resolution carrying a safe error. */
@@ -233,7 +235,12 @@ export function createRestFetchAdapter(
         return failure("json");
       }
 
-      return { ok: true, data: data as T };
+      const schemaVersion = response.headers.get("x-schema-version");
+      return {
+        ok: true,
+        data: data as T,
+        ...(schemaVersion === null ? {} : { schemaVersion }),
+      };
     } catch {
       if (controller.signal.aborted) {
         return failure(timedOut ? "timeout" : "abort");

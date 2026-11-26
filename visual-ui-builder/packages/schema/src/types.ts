@@ -46,3 +46,6 @@ export interface SchemaGraph {
   readonly entities: readonly GraphEntity[];
   readonly relationships: readonly GraphRelationship[];
 }
+
+/** Schema versions keyed by Schema to Entity source name. */
+export type SchemaVersions = Readonly<Record<string, string>>;
