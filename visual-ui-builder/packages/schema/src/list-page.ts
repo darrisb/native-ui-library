@@ -1,4 +1,9 @@
-import type { ComponentInstance, RestDataSource } from "@visual-ui/core";
+import {
+  isValidDataPath,
+  isValidFilterField,
+  type ComponentInstance,
+  type RestDataSource,
+} from "@visual-ui/core";
 
 import { entityById, usableRelationships } from "./parse.js";
 import type { GraphColumn, GraphEntity, SchemaGraph } from "./types.js";
@@ -103,6 +108,11 @@ export function generateListPage(
     if (target === undefined || key === undefined) continue;
     const label = labelColumn(target, key);
     if (label === undefined) continue;
+    if (
+      !isValidFilterField(fromColumn.name)
+      || !isValidDataPath(key)
+      || !isValidDataPath(label.name)
+    ) continue;
 
     filters.push({
       id: `${prefix}-filter-${stablePart(fromColumn.name)}-${stablePart(relationship.id)}`,
@@ -127,7 +137,7 @@ export function generateListPage(
   }
 
   for (const column of entity.columns
-    .filter(({ category }) => category === "TEXT")
+    .filter(({ category, name }) => category === "TEXT" && isValidFilterField(name))
     .slice(0, maxTextFilters)) {
     filters.push({
       id: `${prefix}-text-filter-${stablePart(column.name)}`,

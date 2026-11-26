@@ -83,4 +83,36 @@ const proposedGraph = parseSchemaGraph({
 const proposed = flatten(generateListPage(proposedGraph, "commerce.orders", { apiBaseUrl: "/backend" }));
 assert(!proposed.some(({ type }) => type === "dropdown"), "A proposed relationship should not generate a dropdown");
 
-console.log("[PASS] list-page generation, relationship filters, stability, and validation");
+const unsafeNamesGraph = parseSchemaGraph({
+  ...graphDocument,
+  entities: [
+    {
+      ...graphDocument.entities[0],
+      columns: [
+        ...graphDocument.entities[0].columns,
+        { id: "order.unsafe_customer", name: "customer-id", type: "uuid", category: "OTHER", nullable: true, label: "Unsafe Customer" },
+        { id: "order.unsafe_date", name: "Order Date", type: "varchar", category: "TEXT", nullable: true, label: "Order Date" },
+      ],
+    },
+    {
+      ...graphDocument.entities[1],
+      keyColumns: ["customer-id"],
+      columns: [
+        { id: "customer.unsafe_id", name: "customer-id", type: "uuid", category: "OTHER", nullable: false, label: "Customer ID" },
+        { id: "customer.unsafe_label", name: "display-name", type: "varchar", category: "TEXT", nullable: false, label: "Display Name" },
+      ],
+    },
+  ],
+  relationships: [
+    { id: "unsafe-customer", from: "order.customer_id", to: "customer.unsafe_id", origin: "profile", scope: "cross-source", status: "confirmed" },
+  ],
+});
+const unsafeNames = generateListPage(unsafeNamesGraph, "commerce.orders", { apiBaseUrl: "/backend" });
+const unsafeFilters = flatten(unsafeNames).filter(({ type }) => type === "dropdown" || type === "input");
+assert(
+  !unsafeFilters.some(({ type, properties }) => type === "dropdown" || properties.filterField === "Order Date"),
+  "Columns with unsafe filter fields or mapping paths should not generate filters",
+);
+validateDocument(unsafeNames);
+
+console.log("[PASS] list-page generation, relationship filters, unsafe names, stability, and validation");
