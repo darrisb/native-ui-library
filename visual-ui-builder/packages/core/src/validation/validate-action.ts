@@ -4,6 +4,8 @@ import type {
   NavigateAction,
   NavigateTarget
 } from "../types/action.js";
+import { NAVIGATE_VALUE_TOKEN } from "../types/action.js";
+import { isAllowedUrl } from "./url-safety.js";
 
 /**
  * Result of validating a single action.
@@ -20,42 +22,53 @@ export interface ActionValidationIssue {
 }
 
 /** DOM events that are permitted to trigger an action. */
-const ALLOWED_EVENTS: readonly ActionEvent[] = ["click", "hover", "focus"];
+const ALLOWED_EVENTS: readonly ActionEvent[] = [
+  "click",
+  "hover",
+  "focus",
+  "submit"
+];
 
 /** Navigate targets that are permitted. */
 const ALLOWED_TARGETS: readonly NavigateTarget[] = ["_self", "_blank"];
 
 /**
- * URL schemes that must never appear in a declarative navigate URL. These
- * schemes can execute scripts, render arbitrary content, or exfiltrate data
- * when injected into navigation, so they are unconditionally rejected.
- */
-const BLOCKED_URL_SCHEMES: readonly string[] = [
-  "javascript",
-  "data",
-  "vbscript",
-  "file"
-];
-
-/**
- * Extracts the URL scheme (the part before the first `:`), lower-cased, or
- * `null` when no absolute scheme is present (e.g. relative URLs).
+ * Validates the placement of the optional `{value}` token in a navigate URL.
  *
- * Leading whitespace and control characters are stripped first because browsers
- * ignore them when parsing schemes; without this step an obfuscated payload
- * such as `java\nscript:` would bypass the blocklist.
+ * The token is only permitted in the query part of the URL (after the first
+ * `?`) and may appear at most once. Limiting substitution to a query value
+ * keeps a token from ever altering the scheme, host, or path of the
+ * destination.
  */
-function extractUrlScheme(url: string): string | null {
-  // Strip leading whitespace/control chars to defeat scheme obfuscation.
-  const trimmed = url.replace(/^[\s\u0000-\u001f]+/, "");
-  const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
-  return match ? match[1].toLowerCase() : null;
-}
+function validateValueToken(
+  url: string,
+  path: string,
+  errors: ActionValidationIssue[]
+): void {
+  const firstIndex = url.indexOf(NAVIGATE_VALUE_TOKEN);
+  if (firstIndex === -1) {
+    return;
+  }
 
-/** Reports whether the URL uses a blocked (potentially dangerous) scheme. */
-function isBlockedUrl(url: string): boolean {
-  const scheme = extractUrlScheme(url);
-  return scheme !== null && BLOCKED_URL_SCHEMES.includes(scheme);
+  const secondIndex = url.indexOf(
+    NAVIGATE_VALUE_TOKEN,
+    firstIndex + NAVIGATE_VALUE_TOKEN.length
+  );
+  if (secondIndex !== -1) {
+    errors.push({
+      path,
+      message: `Navigate action "url" must contain at most one "${NAVIGATE_VALUE_TOKEN}" token.`
+    });
+    return;
+  }
+
+  const queryIndex = url.indexOf("?");
+  if (queryIndex === -1 || firstIndex < queryIndex) {
+    errors.push({
+      path,
+      message: `Navigate action "url" may only use the "${NAVIGATE_VALUE_TOKEN}" token after the query string ("?").`
+    });
+  }
 }
 
 /**
@@ -81,11 +94,13 @@ function validateNavigateConfig(
       path: `${path}.url`,
       message: `Navigate action "url" must be a non-empty string.`
     });
-  } else if (isBlockedUrl(url)) {
+  } else if (!isAllowedUrl(url)) {
     errors.push({
       path: `${path}.url`,
       message: `Navigate action "url" uses a disallowed URL scheme.`
     });
+  } else {
+    validateValueToken(url, `${path}.url`, errors);
   }
 
   if (config.target !== undefined && !ALLOWED_TARGETS.includes(config.target)) {

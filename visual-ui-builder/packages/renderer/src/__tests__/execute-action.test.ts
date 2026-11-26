@@ -2,7 +2,8 @@
  * Focused tests for the shared action executor.
  *
  * Verifies that valid navigate actions dispatch through the injected
- * navigation adapter, and that unsafe/invalid actions (blocked schemes,
+ * navigation adapter, that `{value}` tokens are URL-encoded from the
+ * triggering event, and that unsafe/invalid actions (blocked schemes,
  * unsupported types, invalid targets, edit mode) are silently ignored and
  * never reach the adapter.
  */
@@ -83,6 +84,11 @@ function navigateAction(
     config: { url: "https://example.com", target: "_self" },
     ...overrides,
   } as ComponentAction;
+}
+
+/** Builds a minimal event carrying a `detail.value`, as ui-input does. */
+function eventWithValue(value: string): Event {
+  return { detail: { value } } as unknown as Event;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +188,74 @@ test("missing target defaults to navigateTo (_self)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// {value} substitution
+// ---------------------------------------------------------------------------
+
+test("{value} is replaced with the URL-encoded event value", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ event: "submit", config: { url: "/search?q={value}" } }),
+    eventWithValue("a b&c"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.method, "navigateTo");
+  assertEqual(adapter.calls[0]!.url, "/search?q=a%20b%26c");
+});
+
+test("{value} encodes reserved characters", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "/search?q={value}" } }),
+    eventWithValue("a/b?c#d"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.url, "/search?q=a%2Fb%3Fc%23d");
+});
+
+test("{value} substitution honors the _blank target", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({
+      config: { url: "/search?q={value}", target: "_blank" },
+    }),
+    eventWithValue("hello world"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.method, "openInNewWindow");
+  assertEqual(adapter.calls[0]!.url, "/search?q=hello%20world");
+});
+
+test("a URL without {value} navigates unchanged even when the event has a value", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "/search" } }),
+    eventWithValue("ignored"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.url, "/search");
+});
+
+test("{value} resolves to an empty string when the event carries no value", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "/search?q={value}" } }),
+    undefined,
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(adapter.calls[0]!.url, "/search?q=");
+});
+
+// ---------------------------------------------------------------------------
 // Edit mode blocks all actions
 // ---------------------------------------------------------------------------
 
@@ -268,6 +342,17 @@ test("file: URL is silently ignored", () => {
   assertEqual(adapter.calls.length, 0);
 });
 
+test("ftp: URL (neither allowed nor blocked) is silently ignored", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "ftp://example.com/file" } }),
+    undefined,
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 0);
+});
+
 test("obfuscated javascript: (leading whitespace) is silently ignored", () => {
   const adapter = new FakeNavigationAdapter();
   const executor = new ActionExecutor({ navigationAdapter: adapter });
@@ -288,6 +373,54 @@ test("obfuscated javascript: (tab) is silently ignored", () => {
     {} as HTMLElement
   );
   assertEqual(adapter.calls.length, 0);
+});
+
+test("a {value} substitution that becomes javascript: is refused", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "{value}" } }),
+    eventWithValue("javascript:alert(1)"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 0);
+});
+
+test("a {value} substitution that becomes a javascript: URL with leading whitespace is refused", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "{value}" } }),
+    eventWithValue("  javascript:alert(1)"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 0);
+});
+
+test("a {value} substitution into a blocked scheme template is refused", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "javascript:{value}" } }),
+    eventWithValue("alert(1)"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 0);
+});
+
+test("a {value} substitution into a query stays a safe relative URL", () => {
+  const adapter = new FakeNavigationAdapter();
+  const executor = new ActionExecutor({ navigationAdapter: adapter });
+  executor.execute(
+    navigateAction({ config: { url: "/search?q={value}" } }),
+    eventWithValue("javascript:alert(1)"),
+    {} as HTMLElement
+  );
+  assertEqual(adapter.calls.length, 1);
+  assertEqual(
+    adapter.calls[0]!.url,
+    "/search?q=javascript%3Aalert(1)"
+  );
 });
 
 // ---------------------------------------------------------------------------

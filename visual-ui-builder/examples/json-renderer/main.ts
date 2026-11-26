@@ -4,9 +4,108 @@ import {
   registerCard,
   registerText,
   registerButton,
+  registerDropdown,
+  registerInput,
 } from "@visual-ui/components";
-import { ActionExecutor } from "@visual-ui/renderer";
+import {
+  ActionExecutor,
+  BrowserNavigationAdapter,
+} from "@visual-ui/renderer";
 import { renderDocument } from "./renderer.js";
+
+/** Options for the post-render data-source resolver. */
+export interface DataSourceResolveOptions {
+  /**
+   * Fetch implementation used to retrieve suggestion data. Defaults to the
+   * global `fetch`. Tests inject a mock so no real network request is made.
+   */
+  readonly fetch?: typeof fetch;
+}
+
+/**
+ * Walks the rendered DOM and resolves data-source components by fetching their
+ * configured URL, extracting items via responsePath, and mapping label/value
+ * fields into the `data-bound-options` attribute.
+ *
+ * Both `ui-dropdown` and `ui-input` use the same `data-source-url` /
+ * `data-bound-options` convention, so a single selector covers both.
+ */
+export async function resolveDataSourceElements(
+  root: HTMLElement,
+  options: DataSourceResolveOptions = {}
+): Promise<void> {
+  const elements = root.querySelectorAll("[data-source-url]");
+  const fetchFn = options.fetch ?? globalThis.fetch;
+  const promises: Promise<void>[] = [];
+
+  for (const el of elements) {
+    const url = el.getAttribute("data-source-url");
+    const responsePath = el.getAttribute("data-source-response-path") ?? "";
+    const labelField = el.getAttribute("data-source-label-field") ?? "label";
+    const valueField = el.getAttribute("data-source-value-field") ?? "value";
+
+    if (!url) continue;
+
+    el.setAttribute("data-ds-status", "loading");
+
+    const promise = (async () => {
+      try {
+        const response = await fetchFn(url);
+        if (!response.ok) {
+          throw new Error(
+            `HTTP ${response.status} fetching ${url}`
+          );
+        }
+
+        const json = await response.json();
+
+        // Navigate the response path (e.g. "items" or "data.results"). An
+        // empty path means the response root is the collection.
+        let data = json;
+        if (responsePath) {
+          for (const segment of responsePath.split(".")) {
+            if (data == null || typeof data !== "object") break;
+            data = data[segment];
+          }
+        }
+
+        if (!Array.isArray(data)) {
+          el.setAttribute("data-ds-status", "empty");
+          return;
+        }
+
+        const options = data.map((item) => ({
+          value: String(item[valueField] ?? ""),
+          label: String(item[labelField] ?? ""),
+        }));
+
+        el.setAttribute("data-bound-options", JSON.stringify(options));
+
+        if (options.length === 0) {
+          el.setAttribute("data-ds-status", "empty");
+        } else {
+          el.removeAttribute("data-ds-status");
+        }
+      } catch (error) {
+        el.setAttribute("data-ds-status", "error");
+        el.setAttribute(
+          "data-ds-error",
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    })();
+
+    promises.push(promise);
+  }
+
+  await Promise.all(promises);
+}
+
+/**
+ * Backwards-compatible alias for the resolver's original name. The resolver
+ * now populates both Dropdown options and Input suggestions.
+ */
+export const resolveDataSourceDropdowns = resolveDataSourceElements;
 
 function showError(container: HTMLElement, message: string): void {
   container.innerHTML = "";
@@ -48,6 +147,8 @@ async function renderApp(): Promise<void> {
     registerCard(metadataRegistry, nativeRegistry);
     registerText(metadataRegistry, nativeRegistry);
     registerButton(metadataRegistry, nativeRegistry);
+    registerDropdown(metadataRegistry, nativeRegistry);
+    registerInput(metadataRegistry, nativeRegistry);
 
     // The standalone runtime renders in interactive mode so that configured
     // declarative actions (e.g. navigate) are wired to the rendered elements.
@@ -56,7 +157,9 @@ async function renderApp(): Promise<void> {
       metadataRegistry,
       nativeRegistry,
       mode: "interactive",
-      actionExecutor: new ActionExecutor(),
+      actionExecutor: new ActionExecutor({
+        navigationAdapter: new BrowserNavigationAdapter(),
+      }),
     });
 
     if (result.errors.length > 0) {
@@ -78,6 +181,7 @@ async function renderApp(): Promise<void> {
       container.appendChild(element);
     }
 
+    await resolveDataSourceElements(container);
     attachWelcomeButtonListener(container);
   } catch (error) {
     showError(container, error instanceof Error ? error.message : String(error));

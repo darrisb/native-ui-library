@@ -15,6 +15,19 @@ function test(name, fn) {
         });
     }
 }
+async function asyncTest(name, fn) {
+    try {
+        await fn();
+        results.push({ name, passed: true });
+    }
+    catch (error) {
+        results.push({
+            name,
+            passed: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
 function assertEqual(actual, expected, message) {
     if (actual !== expected) {
         throw new Error(message ?? `Expected ${String(expected)}, but got ${String(actual)}.`);
@@ -85,6 +98,29 @@ class MockElement {
             listener(event);
         }
     }
+    querySelectorAll(selector) {
+        const results = [];
+        // Extract tag name (e.g. "ui-dropdown" from "ui-dropdown[data-source-url]")
+        const tagMatch = selector.match(/^([\w-]+)/);
+        const tagName = tagMatch ? tagMatch[1].toLowerCase() : null;
+        // Extract attribute selector [attr-name]
+        const attrMatch = selector.match(/\[([^\]]+)\]/);
+        const attrName = attrMatch ? attrMatch[1].split("=")[0] : null;
+        const search = (element) => {
+            if (tagName && element.nodeName !== tagName)
+                return;
+            if (attrName && element.getAttribute(attrName) === null)
+                return;
+            results.push(element);
+            for (const child of element.childNodes) {
+                search(child);
+            }
+        };
+        for (const child of this.childNodes) {
+            search(child);
+        }
+        return results;
+    }
 }
 class MockEvent {
     type;
@@ -107,10 +143,11 @@ function installMockDom() {
     globals.HTMLElement = MockHTMLElement;
     globals.document = {
         createElement: (tagName) => new MockElement(tagName),
+        getElementById: () => null,
     };
     globals.customElements = {
         get: (name) => {
-            const defined = new Set(["ui-card", "ui-text", "ui-button"]);
+            const defined = new Set(["ui-card", "ui-text", "ui-button", "ui-dropdown"]);
             return defined.has(name) ? {} : undefined;
         },
         define: () => { },
@@ -118,15 +155,25 @@ function installMockDom() {
 }
 installMockDom();
 const { ComponentRegistry } = await import("@visual-ui/core");
-const { NativeComponentRegistry, registerCard, registerText, registerButton, } = await import("@visual-ui/components");
+const { NativeComponentRegistry, registerCard, registerText, registerButton, registerDropdown, } = await import("@visual-ui/components");
 const { validateDocumentShape, renderDocument } = await import("../renderer.js");
 const { ActionExecutor } = await import("@visual-ui/renderer");
+const { resolveDataSourceDropdowns } = await import("../main.js");
 function createRegistries() {
     const metadataRegistry = new ComponentRegistry();
     const nativeRegistry = new NativeComponentRegistry();
     registerCard(metadataRegistry, nativeRegistry);
     registerText(metadataRegistry, nativeRegistry);
     registerButton(metadataRegistry, nativeRegistry);
+    return { metadataRegistry, nativeRegistry };
+}
+function createRegistriesWithDropdown() {
+    const metadataRegistry = new ComponentRegistry();
+    const nativeRegistry = new NativeComponentRegistry();
+    registerCard(metadataRegistry, nativeRegistry);
+    registerText(metadataRegistry, nativeRegistry);
+    registerButton(metadataRegistry, nativeRegistry);
+    registerDropdown(metadataRegistry, nativeRegistry);
     return { metadataRegistry, nativeRegistry };
 }
 test("Valid JSON document shape is accepted", () => {
@@ -684,6 +731,193 @@ test("Standalone runtime does not import builder modules (independence)", () => 
     const mainSource = readFileSync(join(exampleDir, "../main.js"), "utf-8");
     assertTrue(!rendererSource.includes("@visual-ui/builder"), "renderer.ts must not import builder modules.");
     assertTrue(!mainSource.includes("@visual-ui/builder"), "main.ts must not import builder modules.");
+});
+test("Dropdown with staticOptions renders with parsed options", () => {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-static",
+            type: "dropdown",
+            properties: {
+                label: "Category",
+                placeholder: "Choose",
+                name: "category",
+                staticOptions: '[{"value":"a","label":"Alpha"},{"value":"b","label":"Beta"}]',
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const dropdown = result.elements[0];
+    assertEqual(dropdown.nodeName, "ui-dropdown");
+    assertEqual(dropdown.getAttribute("label"), "Category");
+    assertEqual(dropdown.getAttribute("placeholder"), "Choose");
+    assertEqual(dropdown.getAttribute("name"), "category");
+    const optionsRaw = dropdown.getAttribute("options");
+    assertTrue(optionsRaw !== null, "options attribute should be set");
+    const options = JSON.parse(optionsRaw);
+    assertEqual(options.length, 2);
+    assertEqual(options[0].value, "a");
+    assertEqual(options[0].label, "Alpha");
+    assertEqual(options[1].value, "b");
+    assertEqual(options[1].label, "Beta");
+});
+test("Dropdown with dataSource properties renders data attributes", () => {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-rest",
+            type: "dropdown",
+            properties: {
+                label: "Customer",
+                placeholder: "Select customer…",
+                name: "customer",
+                dataSourceUrl: "/api/data/customers?fields=id,name",
+                dataSourceResponsePath: "items",
+                dataSourceLabelField: "name",
+                dataSourceValueField: "id",
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const dropdown = result.elements[0];
+    assertEqual(dropdown.nodeName, "ui-dropdown");
+    assertEqual(dropdown.getAttribute("label"), "Customer");
+    assertEqual(dropdown.getAttribute("data-source-url"), "/api/data/customers?fields=id,name");
+    assertEqual(dropdown.getAttribute("data-source-response-path"), "items");
+    assertEqual(dropdown.getAttribute("data-source-label-field"), "name");
+    assertEqual(dropdown.getAttribute("data-source-value-field"), "id");
+});
+test("Dropdown with dataSource does not set static options", () => {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-ds-only",
+            type: "dropdown",
+            properties: {
+                label: "Dynamic",
+                dataSourceUrl: "/api/data/items",
+                dataSourceResponsePath: "data",
+                dataSourceLabelField: "name",
+                dataSourceValueField: "id",
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    const dropdown = result.elements[0];
+    assertEqual(dropdown.getAttribute("options"), null);
+    assertEqual(dropdown.getAttribute("data-source-url"), "/api/data/items");
+});
+test("Dropdown without staticOptions or dataSource renders without options", () => {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-empty",
+            type: "dropdown",
+            properties: {
+                label: "Empty",
+                name: "empty",
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    assertEqual(result.elements.length, 1);
+    const dropdown = result.elements[0];
+    assertEqual(dropdown.getAttribute("label"), "Empty");
+    assertEqual(dropdown.getAttribute("options"), null);
+    assertEqual(dropdown.getAttribute("data-source-url"), null);
+});
+test("Dropdown required and disabled properties are applied", () => {
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-constrained",
+            type: "dropdown",
+            properties: {
+                label: "Required",
+                name: "req",
+                required: true,
+                disabled: true,
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    const dropdown = result.elements[0];
+    assertEqual(dropdown.getAttribute("required"), "");
+    assertEqual(dropdown.getAttribute("disabled"), "");
+});
+await asyncTest("REST dropdown resolves data source via mock fetch and sets data-bound-options", async () => {
+    // Inject a mock fetch that returns customer data
+    const mockFetch = (async (_url) => ({
+        ok: true,
+        json: async () => ({
+            items: [
+                { id: "c-101", name: "Acme Corp" },
+                { id: "c-102", name: "Globex Inc" },
+            ],
+        }),
+    }));
+    const { metadataRegistry, nativeRegistry } = createRegistriesWithDropdown();
+    const document = [
+        {
+            id: "dropdown-rest",
+            type: "dropdown",
+            properties: {
+                label: "Customer",
+                placeholder: "Select customer…",
+                name: "customer",
+                dataSourceUrl: "/api/data/customers?fields=id,name",
+                dataSourceResponsePath: "items",
+                dataSourceLabelField: "name",
+                dataSourceValueField: "id",
+            },
+        },
+    ];
+    const result = renderDocument(document, {
+        metadataRegistry,
+        nativeRegistry,
+    });
+    assertEqual(result.errors.length, 0);
+    const dropdown = result.elements[0];
+    // Create a mock container and attach the dropdown
+    const container = new MockElement("div");
+    container.appendChild(dropdown);
+    // Resolve data sources through the injected mock fetch
+    await resolveDataSourceDropdowns(container, {
+        fetch: mockFetch,
+    });
+    // Verify data-bound-options is set on the dropdown
+    const boundOptionsRaw = dropdown.getAttribute("data-bound-options");
+    assertTrue(boundOptionsRaw !== null, "data-bound-options should be set after resolving REST data source");
+    const boundOptions = JSON.parse(boundOptionsRaw);
+    assertEqual(boundOptions.length, 2);
+    assertEqual(boundOptions[0].value, "c-101");
+    assertEqual(boundOptions[0].label, "Acme Corp");
+    assertEqual(boundOptions[1].value, "c-102");
+    assertEqual(boundOptions[1].label, "Globex Inc");
+    // Verify data-ds-status was cleared (non-empty result)
+    assertEqual(dropdown.getAttribute("data-ds-status"), null);
 });
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;

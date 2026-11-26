@@ -109,11 +109,184 @@ export const textDefinition: ComponentDefinition = {
   ]
 };
 
+export const dropdownDefinition: ComponentDefinition = {
+  type: "dropdown",
+  name: "Dropdown",
+  category: "form",
+  description: "Selection control with options.",
+  allowChildren: false,
+  dataBinding: ["options"],
+  properties: [
+    {
+      name: "label",
+      type: "string",
+      label: "Label",
+      defaultValue: ""
+    },
+    {
+      name: "placeholder",
+      type: "string",
+      label: "Placeholder",
+      defaultValue: "Select…"
+    },
+    {
+      name: "name",
+      type: "string",
+      label: "Name",
+      defaultValue: ""
+    },
+    {
+      name: "required",
+      type: "boolean",
+      label: "Required",
+      defaultValue: false
+    },
+    {
+      name: "disabled",
+      type: "boolean",
+      label: "Disabled",
+      defaultValue: false
+    },
+    {
+      name: "staticOptions",
+      type: "string",
+      label: "Static Options",
+      defaultValue: "",
+      multiline: true
+    },
+    {
+      name: "dataSourceUrl",
+      type: "string",
+      label: "Data Source URL",
+      defaultValue: ""
+    },
+    {
+      name: "dataSourceResponsePath",
+      type: "string",
+      label: "Response Path",
+      defaultValue: "items"
+    },
+    {
+      name: "dataSourceLabelField",
+      type: "string",
+      label: "Label Field",
+      defaultValue: "label"
+    },
+    {
+      name: "dataSourceValueField",
+      type: "string",
+      label: "Value Field",
+      defaultValue: "value"
+    }
+  ]
+};
+
+export const inputDefinition: ComponentDefinition = {
+  type: "input",
+  name: "Input",
+  category: "form",
+  description: "Text input for search and filter values.",
+  allowChildren: false,
+  dataBinding: ["options"],
+  events: [
+    {
+      event: "focus",
+      label: "Focus"
+    },
+    {
+      event: "submit",
+      label: "Submit"
+    }
+  ],
+  properties: [
+    {
+      name: "label",
+      type: "string",
+      label: "Label",
+      defaultValue: ""
+    },
+    {
+      name: "placeholder",
+      type: "string",
+      label: "Placeholder",
+      defaultValue: ""
+    },
+    {
+      name: "name",
+      type: "string",
+      label: "Name",
+      defaultValue: ""
+    },
+    {
+      name: "inputType",
+      type: "select",
+      label: "Input Type",
+      defaultValue: "text",
+      choices: ["text", "search", "email", "number", "date", "tel", "url"] as const
+    },
+    {
+      name: "required",
+      type: "boolean",
+      label: "Required",
+      defaultValue: false
+    },
+    {
+      name: "disabled",
+      type: "boolean",
+      label: "Disabled",
+      defaultValue: false
+    },
+    {
+      name: "readonly",
+      type: "boolean",
+      label: "Read Only",
+      defaultValue: false
+    },
+    {
+      name: "maxLength",
+      type: "number",
+      label: "Max Length"
+    },
+    {
+      name: "defaultValue",
+      type: "string",
+      label: "Default Value",
+      defaultValue: ""
+    },
+    {
+      name: "dataSourceUrl",
+      type: "string",
+      label: "Data Source URL",
+      defaultValue: ""
+    },
+    {
+      name: "dataSourceResponsePath",
+      type: "string",
+      label: "Response Path",
+      defaultValue: "items"
+    },
+    {
+      name: "dataSourceLabelField",
+      type: "string",
+      label: "Label Field",
+      defaultValue: "label"
+    },
+    {
+      name: "dataSourceValueField",
+      type: "string",
+      label: "Value Field",
+      defaultValue: "value"
+    }
+  ]
+};
+
 /** All sample component definitions. */
 export const sampleDefinitions: readonly ComponentDefinition[] = [
   cardDefinition,
   buttonDefinition,
-  textDefinition
+  textDefinition,
+  dropdownDefinition,
+  inputDefinition
 ];
 
 /** Registers all sample definitions on the supplied registry. */

@@ -143,6 +143,11 @@ const { ComponentRegistry, registerSampleDefinitions } = await import(
   "@visual-ui/core"
 );
 const { renderPropertiesPanel } = await import("../properties-panel.ts");
+type PropertyPatch = import("../properties-panel.ts").PropertyPatch;
+const { createBuilderState } = await import("../../state/builder-state.ts");
+const { findComponentById } = await import("../../state/builder-document.ts");
+type BuilderState = import("../../state/builder-state.ts").BuilderState;
+type BuilderDocument = import("../../state/builder-document.ts").BuilderDocument;
 
 const registry = new ComponentRegistry();
 registerSampleDefinitions(registry);
@@ -268,7 +273,7 @@ test("String input emits property changes", () => {
   });
 
   let changedId: string | null = null;
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -297,7 +302,7 @@ test("Multiline description input emits property changes", () => {
     backgroundColor: "#ffffff",
   });
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -327,7 +332,7 @@ test("Number input converts values and rejects invalid input", () => {
     backgroundColor: "#ffffff",
   });
 
-  const changes: Record<string, string | number | boolean>[] = [];
+  const changes: PropertyPatch[] = [];
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -358,7 +363,7 @@ test("Color input emits property changes", () => {
     backgroundColor: "#ffffff",
   });
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -606,7 +611,7 @@ test("Updating nested Text content", () => {
   };
 
   let changedId: string | null = null;
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -638,7 +643,7 @@ test("Updating nested Button label", () => {
     },
   };
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -668,7 +673,7 @@ test("Updating nested Button disabled state", () => {
     },
   };
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -703,7 +708,7 @@ test("Updating nested Card properties", () => {
     },
   };
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -730,7 +735,7 @@ test("Preserving existing root-level Card editing", () => {
     backgroundColor: "#ffffff",
   });
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
 
   renderPropertiesPanel(
     container as unknown as HTMLElement,
@@ -867,7 +872,7 @@ test("Delete button preserves property editing", () => {
     backgroundColor: "#ffffff",
   });
 
-  let changedPatch: Record<string, string | number | boolean> | null = null;
+  let changedPatch: PropertyPatch | null = null;
   let deleted = false;
 
   renderPropertiesPanel(
@@ -888,6 +893,391 @@ test("Delete button preserves property editing", () => {
 
   assertEqual(changedPatch?.["title"], "Updated");
   assertEqual(deleted, false);
+});
+
+test("Dropdown staticOptions renders as a multiline textarea", () => {
+  const container = createContainer();
+  const instance = {
+    id: "dropdown-1",
+    type: "dropdown",
+    properties: {
+      label: "Choose",
+      placeholder: "Select…",
+      name: "choice",
+      required: false,
+      disabled: false,
+      staticOptions: "Option A\nOption B\nOption C",
+    },
+  };
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {}
+  );
+
+  const staticOptionsControl = findControl(container, "dropdown-1", "staticOptions");
+  assertTrue(staticOptionsControl !== undefined, "Static options control should exist.");
+  assertEqual(staticOptionsControl!.nodeName, "TEXTAREA");
+  assertTrue(
+    staticOptionsControl!.className.includes("properties-control--multiline"),
+    "Static options control should use the multiline style."
+  );
+  assertEqual(staticOptionsControl!.value, "Option A\nOption B\nOption C");
+});
+
+test("Editing staticOptions updates the instance", () => {
+  const container = createContainer();
+  const instance = {
+    id: "dropdown-1",
+    type: "dropdown",
+    properties: {
+      label: "Choose",
+      placeholder: "Select…",
+      name: "choice",
+      required: false,
+      disabled: false,
+      staticOptions: "Option A\nOption B",
+    },
+  };
+
+  let changedId: string | null = null;
+  let changedPatch: PropertyPatch | null = null;
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    (id, patch) => {
+      changedId = id;
+      changedPatch = patch;
+    }
+  );
+
+  const staticOptionsControl = findControl(container, "dropdown-1", "staticOptions") as MockElement;
+  staticOptionsControl.value = "Alpha\nBeta\nGamma";
+  staticOptionsControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  assertEqual(changedId, "dropdown-1");
+  assertEqual(changedPatch?.["staticOptions"], "Alpha\nBeta\nGamma");
+});
+
+// -----------------------------------------------------------------------------
+// Input property editing and undo/redo history.
+// -----------------------------------------------------------------------------
+
+function createInputInstance(
+  id: string,
+  properties: Record<string, string | number | boolean> = {}
+) {
+  return {
+    id,
+    type: "input",
+    properties: {
+      label: "",
+      placeholder: "",
+      name: "",
+      inputType: "text",
+      required: false,
+      disabled: false,
+      readonly: false,
+      defaultValue: "",
+      ...properties,
+    },
+  };
+}
+
+function inputProperties(
+  state: BuilderState,
+  id: string
+): Record<string, string | number | boolean> {
+  return findComponentById(state.getDocument(), id)!.properties;
+}
+
+function renderInputPanel(
+  state: BuilderState,
+  instanceId: string
+): MockElement {
+  const container = createContainer();
+  const instance = findComponentById(state.getDocument(), instanceId)!;
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    (id, patch) => {
+      state.updateInstanceProperties(id, patch, registry);
+    }
+  );
+
+  return container;
+}
+
+test("Input properties render generic controls", () => {
+  const container = createContainer();
+  const instance = createInputInstance("input-1", {
+    inputType: "email",
+    maxLength: 20,
+    defaultValue: "hello",
+  });
+
+  renderPropertiesPanel(
+    container as unknown as HTMLElement,
+    instance as unknown as import("@visual-ui/core").ComponentInstance,
+    registry,
+    () => {}
+  );
+
+  const inputTypeControl = findControl(
+    container,
+    "input-1",
+    "inputType"
+  ) as MockElement;
+  assertTrue(inputTypeControl !== undefined, "Input type control should exist.");
+  assertEqual(inputTypeControl.nodeName, "SELECT");
+  const choices = inputTypeControl.children.map((option) => option.value);
+  assertEqual(choices.join(","), "text,search,email,number,date,tel,url");
+  assertEqual(inputTypeControl.value, "email");
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  assertTrue(maxLengthControl !== undefined, "Max length control should exist.");
+  assertEqual(maxLengthControl.getAttribute("type"), "number");
+  assertEqual(maxLengthControl.value, "20");
+
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+  assertTrue(
+    defaultValueControl !== undefined,
+    "Default value control should exist."
+  );
+  assertEqual(defaultValueControl.getAttribute("type"), "text");
+  assertEqual(defaultValueControl.value, "hello");
+});
+
+test("Changing inputType, maxLength, and defaultValue updates the instance", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const inputTypeControl = findControl(
+    container,
+    "input-1",
+    "inputType"
+  ) as MockElement;
+  inputTypeControl.value = "email";
+  inputTypeControl.dispatchEvent({ type: "change" } as unknown as Event);
+  assertEqual(inputProperties(state, "input-1").inputType, "email");
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  maxLengthControl.value = "20";
+  maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+  defaultValueControl.value = "hello";
+  defaultValueControl.dispatchEvent({ type: "input" } as unknown as Event);
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+});
+
+test("Clearing maxLength removes the property", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1", { maxLength: 20 }));
+  const container = renderInputPanel(state, "input-1");
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  assertEqual(maxLengthControl.value, "20");
+
+  maxLengthControl.value = "";
+  maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  const properties = inputProperties(state, "input-1");
+  assertEqual(properties.maxLength, undefined);
+  assertTrue(
+    !("maxLength" in properties),
+    "maxLength should be removed from the instance."
+  );
+
+  maxLengthControl.dispatchEvent({ type: "blur" } as unknown as Event);
+  assertEqual(
+    maxLengthControl.value,
+    "",
+    "Cleared maxLength should stay empty."
+  );
+});
+
+test("Undo and redo restore each input property change", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const inputTypeControl = findControl(
+    container,
+    "input-1",
+    "inputType"
+  ) as MockElement;
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+
+  inputTypeControl.value = "email";
+  inputTypeControl.dispatchEvent({ type: "change" } as unknown as Event);
+  maxLengthControl.value = "20";
+  maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+  defaultValueControl.value = "hello";
+  defaultValueControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  assertEqual(inputProperties(state, "input-1").inputType, "email");
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+  assertTrue(state.canUndo(), "Expected undo to be available.");
+  assertTrue(!state.canRedo(), "Redo should not be available before an undo.");
+
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").defaultValue, "");
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertEqual(inputProperties(state, "input-1").inputType, "email");
+  assertTrue(state.canRedo(), "Expected redo to be available.");
+
+  state.redo();
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+
+  state.undo();
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").maxLength, undefined);
+  assertEqual(inputProperties(state, "input-1").inputType, "email");
+
+  state.redo();
+  state.redo();
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+
+  state.undo();
+  state.undo();
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").inputType, "text");
+  assertEqual(inputProperties(state, "input-1").maxLength, undefined);
+  assertEqual(inputProperties(state, "input-1").defaultValue, "");
+
+  state.redo();
+  state.redo();
+  state.redo();
+  assertEqual(inputProperties(state, "input-1").inputType, "email");
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+});
+
+test("Typing a multi-character value is one undoable step", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+  for (const value of ["h", "he", "hel", "hell", "hello"]) {
+    defaultValueControl.value = value;
+    defaultValueControl.dispatchEvent({ type: "input" } as unknown as Event);
+  }
+
+  assertEqual(inputProperties(state, "input-1").defaultValue, "hello");
+  assertTrue(state.canUndo(), "Expected undo to be available.");
+
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").defaultValue, "");
+  assertTrue(state.canRedo(), "Expected redo to be available.");
+});
+
+test("Typing a multi-digit number is one undoable step", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  for (const value of ["2", "20"]) {
+    maxLengthControl.value = value;
+    maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+  }
+
+  assertEqual(inputProperties(state, "input-1").maxLength, 20);
+  assertTrue(state.canUndo(), "Expected undo to be available.");
+
+  state.undo();
+  assertEqual(inputProperties(state, "input-1").maxLength, undefined);
+});
+
+test("Input edits serialize to and from JSON", () => {
+  const state = createBuilderState();
+  state.addRootInstance(createInputInstance("input-1"));
+  const container = renderInputPanel(state, "input-1");
+
+  const inputTypeControl = findControl(
+    container,
+    "input-1",
+    "inputType"
+  ) as MockElement;
+  inputTypeControl.value = "search";
+  inputTypeControl.dispatchEvent({ type: "change" } as unknown as Event);
+
+  const maxLengthControl = findControl(
+    container,
+    "input-1",
+    "maxLength"
+  ) as MockElement;
+  maxLengthControl.value = "12";
+  maxLengthControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  const defaultValueControl = findControl(
+    container,
+    "input-1",
+    "defaultValue"
+  ) as MockElement;
+  defaultValueControl.value = "seed";
+  defaultValueControl.dispatchEvent({ type: "input" } as unknown as Event);
+
+  const json = JSON.stringify(state.getDocument());
+  const parsed = JSON.parse(json) as BuilderDocument;
+  const parsedProperties = findComponentById(parsed, "input-1")!.properties;
+  assertEqual(parsedProperties.inputType, "search");
+  assertEqual(parsedProperties.maxLength, 12);
+  assertEqual(parsedProperties.defaultValue, "seed");
+
+  const restoredState = createBuilderState(parsed);
+  assertEqual(inputProperties(restoredState, "input-1").inputType, "search");
+  assertEqual(inputProperties(restoredState, "input-1").maxLength, 12);
+  assertEqual(inputProperties(restoredState, "input-1").defaultValue, "seed");
 });
 
 const passed = results.filter((result) => result.passed).length;

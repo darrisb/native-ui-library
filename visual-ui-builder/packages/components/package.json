@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "node dist/__tests__/integration.test.js && node dist/text/__tests__/ui-text.test.js && node dist/button/__tests__/ui-button.test.js"
+    "test": "node dist/__tests__/integration.test.js && node dist/text/__tests__/ui-text.test.js && node dist/button/__tests__/ui-button.test.js && node dist/dropdown/__tests__/ui-dropdown.test.js && node dist/input/__tests__/ui-input.test.js"
   },
   "dependencies": {
     "@visual-ui/core": "^0.1.0"

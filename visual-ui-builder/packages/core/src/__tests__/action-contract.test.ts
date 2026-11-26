@@ -2,8 +2,8 @@
  * Focused tests for the declarative action contracts and their validator.
  *
  * Covers: valid actions, omitted actions, malformed records, unknown action
- * types, unsafe URL schemes, malformed targets, and JSON round-trip
- * serialization.
+ * types, unsafe URL schemes, malformed targets, `{value}` token placement,
+ * the submit event, and JSON round-trip serialization.
  */
 
 interface TestResult {
@@ -58,6 +58,7 @@ import type {
   NavigateAction,
 } from "../types/action.js";
 import type { ComponentInstance } from "../types/component-instance.js";
+import { inputDefinition } from "../definitions/sample-definitions.js";
 
 const { validateActions } = await import("../validation/validate-action.js");
 
@@ -168,6 +169,15 @@ test("an unsupported event is rejected", () => {
   assertIncludes(errors[0]!.path, "root.actions[0].event");
 });
 
+test("the submit event is accepted", () => {
+  const errors = validateActions(
+    [navigateAction({ event: "submit" })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
 test("a malformed navigate target is rejected", () => {
   const errors = validateActions(
     [navigateAction({ config: { url: "https://example.com", target: "_top" as never } })],
@@ -240,12 +250,108 @@ test("an uppercase JAVASCRIPT: scheme is rejected (case-insensitive)", () => {
   assertIncludes(errors[0]!.message, "disallowed URL scheme");
 });
 
+test("an ftp: URL scheme (neither allowed nor blocked) is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "ftp://example.com/file" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "disallowed URL scheme");
+});
+
+// ---------------------------------------------------------------------------
+// {value} token placement
+// ---------------------------------------------------------------------------
+
+test("a {value} token in the query string is accepted", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "/search?q={value}" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a {value} token in an absolute URL query string is accepted", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "https://example.com/search?q={value}" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a {value} token in the path is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "/search/{value}" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "{value}");
+  assertIncludes(errors[0]!.path, "root.actions[0].config.url");
+});
+
+test("a {value} token without a query string is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "{value}" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "{value}");
+});
+
+test("a {value} token in the scheme is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "java{value}script:alert(1)" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "{value}");
+  assertIncludes(errors[0]!.path, "root.actions[0].config.url");
+});
+
+test("a {value} token before the query string is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "{value}/search?q=1" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "{value}");
+});
+
+test("more than one {value} token is rejected", () => {
+  const errors = validateActions(
+    [navigateAction({ config: { url: "/search?q={value}&r={value}" } })],
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "at most one");
+});
+
+test("the input definition declares focus and submit events", () => {
+  assertDeepEqual(inputDefinition.events, [
+    { event: "focus", label: "Focus" },
+    { event: "submit", label: "Submit" },
+  ]);
+});
+
 test("actions survive JSON round-trip serialization", () => {
   const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Go", variant: "primary" },
-    actions: [navigateAction({ config: { url: "https://example.com/next", target: "_blank" } })],
+    id: "input-1",
+    type: "input",
+    properties: { label: "Search" },
+    actions: [
+      navigateAction({
+        event: "submit",
+        config: { url: "/search?q={value}" },
+      }),
+    ],
   };
 
   const roundTripped = JSON.parse(JSON.stringify(instance)) as ComponentInstance;

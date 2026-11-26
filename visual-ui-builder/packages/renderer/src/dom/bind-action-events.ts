@@ -12,12 +12,17 @@
  *   - Listeners call `event.stopPropagation()` so a nested child's action
  *     does not also trigger a parent's action (nested event isolation).
  *   - Each (element, event) pair tracks its listener so repeated binding
- *     attempts do not produce duplicate listeners across rerenders.
+ *     attempts do not produce duplicate listeners across rerenders. One
+ *     listener per event executes every action configured for that event.
  *   - `detachActionListeners` removes every listener that was attached,
  *     enabling clean teardown.
  */
 
-import type { ComponentDefinition, ComponentInstance } from "@visual-ui/core";
+import type {
+  ComponentAction,
+  ComponentDefinition,
+  ComponentInstance
+} from "@visual-ui/core";
 import type { ActionExecutor } from "../action/execute-action.js";
 import type { RendererMode } from "../types/renderer-options.js";
 
@@ -105,6 +110,9 @@ export function bindActionEvents(
   const boundEvents = new Set(existing.map((record) => record.event));
   const records = [...existing];
 
+  // Group the actions by triggering event so every action configured for an
+  // event is executed, not only the first one.
+  const actionsByEvent = new Map<string, ComponentAction[]>();
   for (const action of actions) {
     const eventName = action.event;
 
@@ -113,6 +121,15 @@ export function bindActionEvents(
       continue;
     }
 
+    const group = actionsByEvent.get(eventName);
+    if (group) {
+      group.push(action);
+    } else {
+      actionsByEvent.set(eventName, [action]);
+    }
+  }
+
+  for (const [eventName, eventActions] of actionsByEvent) {
     // Prevent duplicate listeners for the same event on the same element.
     if (boundEvents.has(eventName)) {
       continue;
@@ -122,7 +139,9 @@ export function bindActionEvents(
       // Stop the event from bubbling to parent elements so that a nested
       // child's action does not also trigger a parent's action.
       event.stopPropagation();
-      executor.execute(action, event, element);
+      for (const action of eventActions) {
+        executor.execute(action, event, element);
+      }
     };
 
     element.addEventListener(eventName, listener);

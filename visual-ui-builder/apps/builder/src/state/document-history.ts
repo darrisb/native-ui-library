@@ -38,6 +38,18 @@ export interface DocumentHistory {
   record(document: BuilderDocument): DocumentHistory;
 
   /**
+   * Replaces the present snapshot without moving the previous present into the
+   * past and without clearing the future.
+   *
+   * Used to coalesce consecutive edits belonging to a single logical change,
+   * such as typing a multi-character value, so they occupy one undoable step.
+   *
+   * If the supplied document is the same reference as the present snapshot,
+   * the original history is returned unchanged.
+   */
+  replacePresent(document: BuilderDocument): DocumentHistory;
+
+  /**
    * Moves the present into the future and restores the most recent past
    * snapshot as the new present.
    *
@@ -71,18 +83,18 @@ function createHistoryObject(
   present: BuilderDocument,
   future: readonly BuilderDocument[]
 ): DocumentHistory {
-  return {
+  const history: DocumentHistory = {
     past,
     present,
     future,
     canUndo: past.length > 0,
     canRedo: future.length > 0,
     record(document: BuilderDocument): DocumentHistory {
-      if (document === this.present) {
-        return this;
+      if (document === present) {
+        return history;
       }
 
-      const nextPast = [...this.past, this.present];
+      const nextPast = [...past, present];
       const cappedPast =
         nextPast.length > MAX_PAST_HISTORY
           ? nextPast.slice(nextPast.length - MAX_PAST_HISTORY)
@@ -90,27 +102,36 @@ function createHistoryObject(
 
       return createHistoryObject(cappedPast, document, []);
     },
-    undo(): DocumentHistory {
-      if (this.past.length === 0) {
-        return this;
+    replacePresent(document: BuilderDocument): DocumentHistory {
+      if (document === present) {
+        return history;
       }
 
-      const newPresent = this.past[this.past.length - 1];
-      const newPast = this.past.slice(0, this.past.length - 1);
-      const newFuture = [this.present, ...this.future];
+      return createHistoryObject(past, document, future);
+    },
+    undo(): DocumentHistory {
+      if (past.length === 0) {
+        return history;
+      }
+
+      const newPresent = past[past.length - 1];
+      const newPast = past.slice(0, past.length - 1);
+      const newFuture = [present, ...future];
 
       return createHistoryObject(newPast, newPresent, newFuture);
     },
     redo(): DocumentHistory {
-      if (this.future.length === 0) {
-        return this;
+      if (future.length === 0) {
+        return history;
       }
 
-      const newPresent = this.future[0];
-      const newPast = [...this.past, this.present];
-      const newFuture = this.future.slice(1);
+      const newPresent = future[0];
+      const newPast = [...past, present];
+      const newFuture = future.slice(1);
 
       return createHistoryObject(newPast, newPresent, newFuture);
     },
   };
+
+  return history;
 }

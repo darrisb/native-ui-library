@@ -70,5 +70,58 @@
       "backgroundColor": "#f0fdf4"
     },
     "children": []
+  },
+  {
+    "id": "dropdown-categories",
+    "type": "dropdown",
+    "properties": {
+      "label": "Category",
+      "placeholder": "Choose a category",
+      "name": "category",
+      "required": true,
+      "staticOptions": "[{\"value\":\"electronics\",\"label\":\"Electronics\"},{\"value\":\"clothing\",\"label\":\"Clothing\"},{\"value\":\"books\",\"label\":\"Books\"}]"
+    }
+  },
+  {
+    "id": "dropdown-customer",
+    "type": "dropdown",
+    "properties": {
+      "label": "Customer",
+      "placeholder": "Select customer…",
+      "name": "customer",
+      "dataSourceUrl": "/api/data/customers?fields=id,name",
+      "dataSourceResponsePath": "items",
+      "dataSourceLabelField": "name",
+      "dataSourceValueField": "id"
+    }
+  },
+  {
+    "id": "input-search",
+    "type": "input",
+    "properties": {
+      "label": "Search",
+      "placeholder": "Search products…",
+      "name": "q",
+      "inputType": "search",
+      "required": false,
+      "disabled": false,
+      "readonly": false,
+      "maxLength": 80,
+      "defaultValue": "",
+      "dataSourceUrl": "/api/search/suggestions?fields=title,query",
+      "dataSourceResponsePath": "suggestions",
+      "dataSourceLabelField": "title",
+      "dataSourceValueField": "query"
+    },
+    "actions": [
+      {
+        "id": "action-search-submit",
+        "event": "submit",
+        "type": "navigate",
+        "config": {
+          "url": "/search?q={value}"
+        }
+      }
+    ]
   }
 ]

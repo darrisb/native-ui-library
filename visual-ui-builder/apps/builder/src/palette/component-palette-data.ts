@@ -35,6 +35,7 @@ function normalizeCategory(category: string): PaletteCategory | string {
       return "Layout";
     case "content":
       return "Content";
+    case "form":
     case "forms":
       return "Forms";
     case "data":

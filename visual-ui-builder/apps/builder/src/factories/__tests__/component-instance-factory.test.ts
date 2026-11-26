@@ -105,6 +105,20 @@ test("Creates a valid Button instance with default properties", () => {
   assertInstanceIdFormat(instance.id);
 });
 
+test("Creates a valid Dropdown instance with default properties", () => {
+  const registry = new ComponentRegistry();
+  registerSampleDefinitions(registry);
+  const instance = createComponentInstance("dropdown", registry);
+  assertEqual(instance.type, "dropdown");
+  assertEqual(instance.properties.label, "");
+  assertEqual(instance.properties.placeholder, "Select…");
+  assertEqual(instance.properties.name, "");
+  assertEqual(instance.properties.required, false);
+  assertEqual(instance.properties.disabled, false);
+  assertEqual(instance.properties.staticOptions, "");
+  assertInstanceIdFormat(instance.id);
+});
+
 test("Instance IDs are unique", () => {
   const registry = new ComponentRegistry();
   registerSampleDefinitions(registry);

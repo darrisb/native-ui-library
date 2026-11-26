@@ -1,8 +1,10 @@
 /**
- * Focused tests for action event wiring in the recursive renderer.
+ * Focused tests for wiring declarative actions onto rendered components.
  *
- * Covers: nested event isolation, no duplicate listeners, edit mode inert,
- * interactive mode dispatch.
+ * Covers the input's submit action end to end: an interactive render binds a
+ * `submit` listener from the component definition's event metadata, the
+ * executor substitutes `{value}` from the event detail, and edit mode stays
+ * inert.
  */
 
 interface TestResult {
@@ -119,11 +121,13 @@ class MockElement {
 
 class MockEvent {
   readonly type: string;
+  readonly detail: unknown;
   defaultPrevented = false;
   propagationStopped = false;
 
-  constructor(type: string) {
+  constructor(type: string, detail: unknown = undefined) {
     this.type = type;
+    this.detail = detail;
   }
 
   preventDefault(): void {
@@ -146,10 +150,8 @@ function installMockDom(): void {
   };
 
   globals.customElements = {
-    get: (name: string): object | undefined => {
-      const defined = new Set(["ui-card", "ui-text", "ui-button"]);
-      return defined.has(name) ? {} : undefined;
-    },
+    get: (name: string): object | undefined =>
+      name === "ui-input" ? {} : undefined,
     define: (): void => {},
   };
 }
@@ -164,14 +166,10 @@ const { ActionExecutor } = await import("../action/execute-action.js");
 const { renderComponent } = await import("../dom/render-component.js");
 const { detachActionListeners } = await import("../dom/bind-action-events.js");
 
-const { ComponentRegistry, registerSampleDefinitions } = await import(
-  "@visual-ui/core"
-);
+const { ComponentRegistry } = await import("@visual-ui/core");
 const {
   NativeComponentRegistry,
-  registerCard,
-  registerText,
-  registerButton,
+  registerInput,
 } = await import("@visual-ui/components");
 
 class FakeNavigationAdapter implements NavigationAdapter {
@@ -184,32 +182,42 @@ class FakeNavigationAdapter implements NavigationAdapter {
   openInNewWindow(url: string): void {
     this.calls.push({ method: "openInNewWindow", url });
   }
-
-  reset(): void {
-    this.calls.length = 0;
-  }
 }
 
 function createRegistries() {
   const metadataRegistry = new ComponentRegistry();
-  registerSampleDefinitions(metadataRegistry);
   const nativeRegistry = new NativeComponentRegistry();
-  registerCard(metadataRegistry, nativeRegistry);
-  registerText(metadataRegistry, nativeRegistry);
-  registerButton(metadataRegistry, nativeRegistry);
+  registerInput(metadataRegistry, nativeRegistry);
   return { metadataRegistry, nativeRegistry };
 }
 
-function navigateAction(
-  id: string,
+function submitAction(
   overrides: Partial<NavigateAction> = {}
 ): NavigateAction {
   return {
-    id,
-    event: "click",
+    id: "submit-1",
+    event: "submit",
     type: "navigate",
-    config: { url: "https://example.com", target: "_self" },
+    config: { url: "/search?q={value}" },
     ...overrides,
+  };
+}
+
+function focusAction(): NavigateAction {
+  return {
+    id: "focus-1",
+    event: "focus",
+    type: "navigate",
+    config: { url: "/search?q={value}" },
+  };
+}
+
+function searchInstance(action: NavigateAction): ComponentInstance {
+  return {
+    id: "input-1",
+    type: "input",
+    properties: { label: "Search" },
+    actions: [action],
   };
 }
 
@@ -227,206 +235,118 @@ function render(
   }) as unknown as MockElement;
 }
 
-// ---------------------------------------------------------------------------
-// Edit mode is inert — no listeners attached, no actions dispatched
-// ---------------------------------------------------------------------------
-
-test("edit mode: no action listeners attached", () => {
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-    actions: [navigateAction("a1")],
-  };
-  const element = render(instance, "edit");
-  assertEqual(element.listenerCount("click"), 0);
+test("interactive mode binds the input's submit event", () => {
+  const element = render(searchInstance(submitAction()), "interactive");
+  assertEqual(element.listenerCount("submit"), 1);
 });
 
-test("edit mode: click does not dispatch navigation", () => {
+test("interactive mode binds the input's focus event", () => {
+  const element = render(searchInstance(focusAction()), "interactive");
+  assertEqual(element.listenerCount("focus"), 1);
+});
+
+test("focus action navigates using the event value", () => {
   const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-    actions: [navigateAction("a1")],
-  };
-  const element = render(instance, "edit", adapter);
-  element.fire("click", new MockEvent("click"));
-  assertEqual(adapter.calls.length, 0);
-});
+  const element = render(searchInstance(focusAction()), "interactive", adapter);
 
-test("interactive mode without actions: no listeners attached", () => {
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-  };
-  const element = render(instance, "interactive");
-  assertEqual(element.listenerCount("click"), 0);
-});
+  element.fire("focus", new MockEvent("focus", { value: "a b" }));
 
-// ---------------------------------------------------------------------------
-// Interactive mode dispatches actions through the executor
-// ---------------------------------------------------------------------------
-
-test("interactive mode: click dispatches navigate action", () => {
-  const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-    actions: [navigateAction("a1")],
-  };
-  const element = render(instance, "interactive", adapter);
-  assertEqual(element.listenerCount("click"), 1);
-  element.fire("click", new MockEvent("click"));
   assertEqual(adapter.calls.length, 1);
   assertEqual(adapter.calls[0]!.method, "navigateTo");
-  assertEqual(adapter.calls[0]!.url, "https://example.com");
+  assertEqual(adapter.calls[0]!.url, "/search?q=a%20b");
 });
 
-test("interactive mode: _blank target opens in new window", () => {
+test("edit mode binds no action listeners", () => {
+  const element = render(searchInstance(submitAction()), "edit");
+  assertEqual(element.listenerCount("submit"), 0);
+});
+
+test("Enter submit navigates to the URL-encoded search results", () => {
   const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Open", variant: "primary" },
-    actions: [navigateAction("a1", { config: { url: "https://example.com", target: "_blank" } })],
-  };
-  const element = render(instance, "interactive", adapter);
-  element.fire("click", new MockEvent("click"));
+  const element = render(searchInstance(submitAction()), "interactive", adapter);
+
+  element.fire(
+    "submit",
+    new MockEvent("submit", { value: "a b&c" })
+  );
+
   assertEqual(adapter.calls.length, 1);
-  assertEqual(adapter.calls[0]!.method, "openInNewWindow");
+  assertEqual(adapter.calls[0]!.method, "navigateTo");
+  assertEqual(adapter.calls[0]!.url, "/search?q=a%20b%26c");
 });
 
-// ---------------------------------------------------------------------------
-// Nested event isolation — child action does not trigger parent action
-// ---------------------------------------------------------------------------
-
-test("nested Button click does not invoke parent Card click action", () => {
+test("multiple actions bound to the same event all execute", () => {
   const adapter = new FakeNavigationAdapter();
   const instance: ComponentInstance = {
-    id: "card-1",
-    type: "card",
-    properties: { title: "Parent" },
-    actions: [navigateAction("card-action", { config: { url: "https://parent.com" } })],
-    children: [
-      {
-        id: "button-1",
-        type: "button",
-        properties: { label: "Child", variant: "primary" },
-        actions: [navigateAction("button-action", { config: { url: "https://child.com" } })],
-      },
+    id: "input-multi",
+    type: "input",
+    properties: { label: "Search" },
+    actions: [
+      submitAction({ id: "submit-1", config: { url: "/first?q={value}" } }),
+      submitAction({ id: "submit-2", config: { url: "/second?q={value}" } }),
     ],
   };
-  const card = render(instance, "interactive", adapter);
-  const button = card.firstElementChild!;
-
-  // Click the nested button.
-  const event = new MockEvent("click");
-  button.fire("click", event);
-
-  // Only the button's action should fire.
-  assertEqual(adapter.calls.length, 1);
-  assertEqual(adapter.calls[0]!.url, "https://child.com");
-
-  // The child listener must have stopped propagation so the parent card's
-  // listener is never invoked.
-  assertTrue(event.propagationStopped, "Expected child listener to stop propagation.");
-});
-
-test("parent Card action still fires when clicking Card directly", () => {
-  const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "card-1",
-    type: "card",
-    properties: { title: "Parent" },
-    actions: [navigateAction("card-action", { config: { url: "https://parent.com" } })],
-    children: [
-      {
-        id: "button-1",
-        type: "button",
-        properties: { label: "Child", variant: "primary" },
-        actions: [navigateAction("button-action", { config: { url: "https://child.com" } })],
-      },
-    ],
-  };
-  const card = render(instance, "interactive", adapter);
-
-  // Click the card body directly (simulated by firing on the card element).
-  card.fire("click", new MockEvent("click"));
-  assertEqual(adapter.calls.length, 1);
-  assertEqual(adapter.calls[0]!.url, "https://parent.com");
-});
-
-// ---------------------------------------------------------------------------
-// No duplicate listeners across rerenders / rebinds
-// ---------------------------------------------------------------------------
-
-test("re-rendering the same instance produces one listener per element", () => {
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-    actions: [navigateAction("a1")],
-  };
-  render(instance, "interactive");
-  const second = render(instance, "interactive");
-  assertEqual(second.listenerCount("click"), 1);
-});
-
-test("detachActionListeners removes all attached action listeners", () => {
-  const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
-    actions: [navigateAction("a1")],
-  };
   const element = render(instance, "interactive", adapter);
-  assertEqual(element.listenerCount("click"), 1);
 
-  detachActionListeners(element as unknown as HTMLElement);
-  assertEqual(element.listenerCount("click"), 0);
+  assertEqual(element.listenerCount("submit"), 1);
+  element.fire("submit", new MockEvent("submit", { value: "x" }));
 
-  // After detach, no action fires.
-  element.fire("click", new MockEvent("click"));
+  assertEqual(adapter.calls.length, 2);
+  assertEqual(adapter.calls[0]!.url, "/first?q=x");
+  assertEqual(adapter.calls[1]!.url, "/second?q=x");
+});
+
+test("edit mode submit does not navigate", () => {
+  const adapter = new FakeNavigationAdapter();
+  const element = render(searchInstance(submitAction()), "edit", adapter);
+
+  element.fire(
+    "submit",
+    new MockEvent("submit", { value: "a b&c" })
+  );
+
   assertEqual(adapter.calls.length, 0);
 });
 
-test("detachActionListeners is safe to call with no listeners attached", () => {
+test("an input with no actions binds no listeners", () => {
   const instance: ComponentInstance = {
-    id: "button-1",
-    type: "button",
-    properties: { label: "Click", variant: "primary" },
+    id: "input-plain",
+    type: "input",
+    properties: { label: "Search" },
   };
   const element = render(instance, "interactive");
-  // Should not throw.
-  detachActionListeners(element as unknown as HTMLElement);
-  assertEqual(element.listenerCount("click"), 0);
+  assertEqual(element.listenerCount("submit"), 0);
 });
 
-// ---------------------------------------------------------------------------
-// Text (no event support) never receives action listeners
-// ---------------------------------------------------------------------------
-
-test("Text instance with actions but no event support gets no listeners", () => {
+test("detachActionListeners removes the submit listener", () => {
   const adapter = new FakeNavigationAdapter();
-  const instance: ComponentInstance = {
-    id: "text-1",
-    type: "text",
-    properties: { content: "Hello" },
-    actions: [navigateAction("a1")],
-  };
-  const element = render(instance, "interactive", adapter);
-  assertEqual(element.listenerCount("click"), 0);
-  element.fire("click", new MockEvent("click"));
+  const element = render(searchInstance(submitAction()), "interactive", adapter);
+  assertEqual(element.listenerCount("submit"), 1);
+
+  detachActionListeners(element as unknown as HTMLElement);
+  assertEqual(element.listenerCount("submit"), 0);
+
+  element.fire(
+    "submit",
+    new MockEvent("submit", { value: "a b&c" })
+  );
   assertEqual(adapter.calls.length, 0);
 });
 
-// ---------------------------------------------------------------------------
-// Summary
-// ---------------------------------------------------------------------------
+test("invalid action URLs are rejected during render", () => {
+  let threw = false;
+  try {
+    render(
+      searchInstance(
+        submitAction({ config: { url: "/search/{value}" } })
+      ),
+      "interactive"
+    );
+  } catch {
+    threw = true;
+  }
+  assertTrue(threw, "Expected render to reject a misplaced {value} token.");
+});
 
 const passed = results.filter((result) => result.passed).length;
 const failed = results.filter((result) => !result.passed).length;

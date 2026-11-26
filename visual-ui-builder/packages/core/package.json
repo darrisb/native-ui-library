@@ -15,7 +15,8 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node dist/__tests__/action-contract.test.js"
   },
   "files": [
     "dist"

@@ -123,13 +123,7 @@ function renderComponentInternal(
     // In interactive mode, attach declarative action listeners. In edit mode
     // (the default) this is a no-op, preserving existing caller behavior.
     if (executor) {
-      bindActionEvents(
-        element,
-        instance,
-        definition,
-        executor,
-        options.mode ?? "edit"
-      );
+      bindActionEvents(element, instance, definition, executor, options.mode);
     }
 
     // In interactive mode, resolve declarative data sources for this instance.

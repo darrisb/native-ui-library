@@ -1,4 +1,5 @@
 import type { ComponentInstance } from "@visual-ui/core";
+import { parseStaticOptions } from "@visual-ui/core";
 
 type PropertyAdapter = (
   element: HTMLElement,
@@ -59,10 +60,158 @@ const buttonAdapter: PropertyAdapter = (element, properties) => {
   }
 };
 
+const dropdownAdapter: PropertyAdapter = (element, properties) => {
+  if (properties.label !== undefined) {
+    element.setAttribute("label", String(properties.label));
+  }
+
+  if (properties.placeholder !== undefined) {
+    element.setAttribute("placeholder", String(properties.placeholder));
+  }
+
+  if (properties.name !== undefined) {
+    element.setAttribute("name", String(properties.name));
+  }
+
+  if (properties.required === true) {
+    element.setAttribute("required", "");
+  } else if (properties.required === false) {
+    element.removeAttribute("required");
+  }
+
+  if (properties.disabled === true) {
+    element.setAttribute("disabled", "");
+  } else if (properties.disabled === false) {
+    element.removeAttribute("disabled");
+  }
+
+  if (properties.staticOptions !== undefined) {
+    const raw = String(properties.staticOptions).trim();
+    let options;
+    // Try JSON array first: [{"value":"a","label":"Alpha"}, ...]
+    if (raw.startsWith("[")) {
+      try {
+        options = JSON.parse(raw);
+      } catch {
+        options = parseStaticOptions(raw);
+      }
+    } else {
+      // Multiline value|label format
+      options = parseStaticOptions(raw);
+    }
+    element.setAttribute("options", JSON.stringify(options));
+  }
+
+  // Data-source properties: written as data attributes so a data-binding layer
+  // can read them and perform a fetch to populate data-bound-options.
+  if (properties.dataSourceUrl !== undefined) {
+    element.setAttribute("data-source-url", String(properties.dataSourceUrl));
+  }
+
+  if (properties.dataSourceResponsePath !== undefined) {
+    element.setAttribute(
+      "data-source-response-path",
+      String(properties.dataSourceResponsePath)
+    );
+  }
+
+  if (properties.dataSourceLabelField !== undefined) {
+    element.setAttribute(
+      "data-source-label-field",
+      String(properties.dataSourceLabelField)
+    );
+  }
+
+  if (properties.dataSourceValueField !== undefined) {
+    element.setAttribute(
+      "data-source-value-field",
+      String(properties.dataSourceValueField)
+    );
+  }
+};
+
+const inputAdapter: PropertyAdapter = (element, properties) => {
+  if (properties.label !== undefined) {
+    element.setAttribute("label", String(properties.label));
+  }
+
+  if (properties.placeholder !== undefined) {
+    element.setAttribute("placeholder", String(properties.placeholder));
+  }
+
+  if (properties.name !== undefined) {
+    element.setAttribute("name", String(properties.name));
+  }
+
+  if (properties.inputType !== undefined) {
+    element.setAttribute("input-type", String(properties.inputType));
+  }
+
+  if (properties.required === true) {
+    element.setAttribute("required", "");
+  } else if (properties.required === false) {
+    element.removeAttribute("required");
+  }
+
+  if (properties.disabled === true) {
+    element.setAttribute("disabled", "");
+  } else if (properties.disabled === false) {
+    element.removeAttribute("disabled");
+  }
+
+  if (properties.readonly === true) {
+    element.setAttribute("readonly", "");
+  } else if (properties.readonly === false) {
+    element.removeAttribute("readonly");
+  }
+
+  if (
+    typeof properties.maxLength === "number" &&
+    Number.isInteger(properties.maxLength) &&
+    properties.maxLength > 0
+  ) {
+    element.setAttribute("max-length", String(properties.maxLength));
+  }
+
+  if (properties.defaultValue !== undefined) {
+    element.setAttribute("default-value", String(properties.defaultValue));
+  }
+
+  // Data-source properties: written as data attributes so a data-binding layer
+  // can read them and perform a fetch to populate data-bound-options. The
+  // Input renders those suggestions in its shadow-DOM datalist.
+  if (properties.dataSourceUrl !== undefined) {
+    element.setAttribute("data-source-url", String(properties.dataSourceUrl));
+  }
+
+  if (properties.dataSourceResponsePath !== undefined) {
+    element.setAttribute(
+      "data-source-response-path",
+      String(properties.dataSourceResponsePath)
+    );
+  }
+
+  if (properties.dataSourceLabelField !== undefined) {
+    element.setAttribute(
+      "data-source-label-field",
+      String(properties.dataSourceLabelField)
+    );
+  }
+
+  if (properties.dataSourceValueField !== undefined) {
+    element.setAttribute(
+      "data-source-value-field",
+      String(properties.dataSourceValueField)
+    );
+  }
+};
+
 const adapters = new Map<string, PropertyAdapter>([
   ["card", cardAdapter],
   ["text", textAdapter],
   ["button", buttonAdapter],
+  ["dropdown", dropdownAdapter],
+  ["input", inputAdapter],
 ]);
 
 export function applyComponentProperties(

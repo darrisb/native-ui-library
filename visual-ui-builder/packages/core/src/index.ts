@@ -18,6 +18,7 @@ export type {
   NavigateConfig,
   NavigateTarget
 } from "./types/action.js";
+export { NAVIGATE_VALUE_TOKEN } from "./types/action.js";
 
 export type {
   DataSource,
@@ -37,6 +38,8 @@ export { ComponentRegistry } from "./registry/component-registry.js";
 export {
   buttonDefinition,
   cardDefinition,
+  dropdownDefinition,
+  inputDefinition,
   registerSampleDefinitions,
   sampleDefinitions,
   textDefinition
@@ -44,6 +47,13 @@ export {
 
 export type { ActionValidationIssue } from "./validation/validate-action.js";
 export { validateActions } from "./validation/validate-action.js";
+
+export {
+  ALLOWED_URL_SCHEMES,
+  BLOCKED_URL_SCHEMES,
+  extractUrlScheme,
+  isAllowedUrl
+} from "./validation/url-safety.js";
 
 export type { DataSourceValidationIssue } from "./validation/validate-data-source.js";
 export { validateDataSourceContracts } from "./validation/validate-data-source.js";
@@ -74,3 +84,6 @@ export {
   mapDropdownOptions,
   extractAndMapRecords
 } from "./data/map-response-records.js";
+
+export type { DropdownOption as StaticDropdownOption } from "./data/parse-static-options.js";
+export { parseStaticOptions } from "./data/parse-static-options.js";

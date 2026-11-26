@@ -12,10 +12,17 @@
  */
 
 /** DOM events that can trigger a declarative action. */
-export type ActionEvent = "click" | "hover" | "focus";
+export type ActionEvent = "click" | "hover" | "focus" | "submit";
 
 /** Allowed values for a navigate action's link target. */
 export type NavigateTarget = "_self" | "_blank";
+
+/**
+ * Token that a navigate URL may contain at most once, and only within the
+ * query part (after the first `?`). The action executor replaces it with the
+ * URL-encoded `value` from the triggering event's `detail` before navigating.
+ */
+export const NAVIGATE_VALUE_TOKEN = "{value}";
 
 /** Configuration specific to a `navigate` action. */
 export interface NavigateConfig {
@@ -25,6 +32,10 @@ export interface NavigateConfig {
    * Must be a non-empty string and must not use a dangerous scheme such as
    * `javascript:` or `data:`. Relative URLs and standard `http(s)` / `mailto` /
    * `tel` schemes are permitted.
+   *
+   * May contain at most one `{value}` token, and only after the first `?`
+   * (in the query part). The executor substitutes the URL-encoded value from
+   * the triggering event's `detail` before navigating.
    */
   readonly url: string;
 

@@ -1,5 +1,5 @@
 export { renderComponent, unmountDataSources } from "./dom/render-component.js";
-export type { RendererOptions, RendererMode } from "./types/renderer-options.js";
+export type { RendererMode, RendererOptions } from "./types/renderer-options.js";
 
 export { bindActionEvents, detachActionListeners } from "./dom/bind-action-events.js";
 

@@ -10,7 +10,10 @@ import {
   updateComponentById,
   type BuilderDocument,
 } from "./builder-document.ts";
-import { createDocumentHistory } from "./document-history.ts";
+import {
+  createDocumentHistory,
+  type DocumentHistory,
+} from "./document-history.ts";
 
 /** Listener notified whenever the builder document changes. */
 export type DocumentChangeListener = (document: BuilderDocument) => void;
@@ -19,6 +22,12 @@ export type DocumentChangeListener = (document: BuilderDocument) => void;
 export type SelectionChangeListener = (
   selectedInstanceId: string | null
 ) => void;
+
+/** Identifies the instance and property affected by a property edit. */
+interface PropertyEditKey {
+  readonly id: string;
+  readonly name: string;
+}
 
 /** Minimal immutable builder state with subscription support. */
 export interface BuilderState {
@@ -131,9 +140,21 @@ export interface BuilderState {
    *
    * @throws Error when the instance is not found or validation fails.
    */
+  /**
+   * Merges the supplied property patch into the instance's existing properties,
+   * validates the result against the metadata registry, and updates the
+   * document when validation succeeds.
+   *
+   * A patch value of `undefined` removes the property from the instance, which
+   * clears optional properties such as an input's `maxLength`.
+   *
+   * The instance may be anywhere in the document tree.
+   *
+   * @throws Error when the instance is not found or validation fails.
+   */
   updateInstanceProperties(
     id: string,
-    patch: Record<string, string | number | boolean>,
+    patch: Record<string, string | number | boolean | undefined>,
     registry: ComponentRegistry
   ): void;
 
@@ -219,7 +240,8 @@ export function createBuilderState(
   initialDocument: BuilderDocument = { rootInstances: [] }
 ): BuilderState {
   let document: BuilderDocument = initialDocument;
-  let history = createDocumentHistory(initialDocument);
+  let history: DocumentHistory = createDocumentHistory(initialDocument);
+  let lastPropertyEdit: PropertyEditKey | null = null;
   let selectedInstanceId: string | null = null;
   const documentListeners = new Set<DocumentChangeListener>();
   const selectionListeners = new Set<SelectionChangeListener>();
@@ -237,26 +259,43 @@ export function createBuilderState(
   }
 
   /**
-   * Records a new document in history after a successful mutation.
+   * Commits a document mutation to history.
    *
-   * The history module ignores identical references, so this is safe to call
-   * after every mutation.
+   * Consecutive single-property edits to the same instance and property are
+   * coalesced into one undoable step, so typing a multi-character value does
+   * not create a history entry per keystroke. Any other mutation records a
+   * new step, which clears the redo history.
    */
-  function recordHistory(nextDocument: BuilderDocument): void {
-    history = history.record(nextDocument);
+  function commitHistory(
+    nextDocument: BuilderDocument,
+    propertyEdit: PropertyEditKey | null
+  ): void {
+    if (
+      propertyEdit !== null &&
+      lastPropertyEdit !== null &&
+      lastPropertyEdit.id === propertyEdit.id &&
+      lastPropertyEdit.name === propertyEdit.name
+    ) {
+      history = history.replacePresent(nextDocument);
+    } else {
+      history = history.record(nextDocument);
+    }
+    lastPropertyEdit = propertyEdit;
   }
 
   /**
    * Restores the document and selection from the supplied history snapshot.
    *
    * If the snapshot's present document matches the current document reference,
-   * no changes are made and no subscribers are notified. Otherwise, the document
+   * no changes are made and no subscribers are notified. Otherwise the document
    * is replaced, selection is validated against the restored document, and
    * subscribers are notified exactly once for each changed channel.
    */
-  function restoreFromHistory(
-    nextHistory: typeof history
-  ): void {
+  function restoreFromHistory(nextHistory: DocumentHistory): void {
+    // Undo/redo ends any in-progress property edit session, so a following
+    // edit starts a fresh undoable step.
+    lastPropertyEdit = null;
+
     if (nextHistory.present === document) {
       return;
     }
@@ -290,7 +329,7 @@ export function createBuilderState(
     addRootInstance(instance: ComponentInstance): void {
       const nextDocument = addRootInstance(document, instance);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -324,7 +363,7 @@ export function createBuilderState(
 
       const nextDocument = insertRootInstanceAt(document, instance, index);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -363,9 +402,14 @@ export function createBuilderState(
         throw new Error(`Instance "${instance.id}" already exists.`);
       }
 
-      const nextDocument = insertChildInstanceAt(document, parentId, instance, index);
+      const nextDocument = insertChildInstanceAt(
+        document,
+        parentId,
+        instance,
+        index
+      );
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -411,7 +455,7 @@ export function createBuilderState(
       }
 
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -424,7 +468,7 @@ export function createBuilderState(
       }
 
       document = afterDocument;
-      recordHistory(afterDocument);
+      commitHistory(afterDocument, null);
 
       if (
         selectedInstanceId !== null &&
@@ -452,7 +496,7 @@ export function createBuilderState(
 
     updateInstanceProperties(
       id: string,
-      patch: Record<string, string | number | boolean>,
+      patch: Record<string, string | number | boolean | undefined>,
       registry: ComponentRegistry
     ): void {
       const target = findComponentById(document, id);
@@ -460,9 +504,29 @@ export function createBuilderState(
         throw new Error(`Instance "${id}" does not exist.`);
       }
 
+      const patchNames = Object.keys(patch);
+      const propertyEdit: PropertyEditKey | null =
+        patchNames.length === 1 ? { id, name: patchNames[0] } : null;
+
+      const nextProperties: Record<string, string | number | boolean> = {
+        ...target.properties,
+      };
+      let changed = false;
+      for (const [name, value] of Object.entries(patch)) {
+        if (value === undefined) {
+          if (name in nextProperties) {
+            delete nextProperties[name];
+            changed = true;
+          }
+        } else if (nextProperties[name] !== value) {
+          nextProperties[name] = value;
+          changed = true;
+        }
+      }
+
       const updatedInstance: ComponentInstance = {
         ...target,
-        properties: { ...target.properties, ...patch },
+        properties: nextProperties,
       };
 
       const errors = validateComponentInstance(updatedInstance, registry);
@@ -471,9 +535,17 @@ export function createBuilderState(
         throw new Error(`Invalid property update: ${messages}`);
       }
 
-      const nextDocument = updateComponentById(document, id, () => updatedInstance);
+      if (!changed) {
+        return;
+      }
+
+      const nextDocument = updateComponentById(
+        document,
+        id,
+        () => updatedInstance
+      );
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, propertyEdit);
       notifyDocument();
     },
 
@@ -500,7 +572,7 @@ export function createBuilderState(
 
       const nextDocument = updateComponentById(document, id, () => updatedInstance);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 
@@ -527,7 +599,7 @@ export function createBuilderState(
 
       const nextDocument = updateComponentById(document, id, () => updatedInstance);
       document = nextDocument;
-      recordHistory(nextDocument);
+      commitHistory(nextDocument, null);
       notifyDocument();
     },
 

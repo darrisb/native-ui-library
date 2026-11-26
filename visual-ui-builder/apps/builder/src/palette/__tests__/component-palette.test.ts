@@ -84,6 +84,36 @@ test("Button appears under Actions", () => {
   );
 });
 
+test("Dropdown appears under Forms", () => {
+  const registry = new ComponentRegistry();
+  registerSampleDefinitions(registry);
+  const groups = getPaletteGroups(registry);
+  const forms = findGroup(groups, "Forms");
+  assertTrue(
+    getComponentNames(forms).includes("Dropdown"),
+    `Expected Dropdown in Forms, got: ${getComponentNames(forms).join(", ")}`
+  );
+});
+
+test("Input appears under Forms next to Dropdown", () => {
+  const registry = new ComponentRegistry();
+  registerSampleDefinitions(registry);
+  const groups = getPaletteGroups(registry);
+  const forms = findGroup(groups, "Forms");
+  const names = getComponentNames(forms);
+  const dropdownIndex = names.indexOf("Dropdown");
+  const inputIndex = names.indexOf("Input");
+  assertTrue(
+    dropdownIndex !== -1,
+    `Expected Dropdown in Forms, got: ${names.join(", ")}`
+  );
+  assertTrue(
+    inputIndex !== -1,
+    `Expected Input in Forms, got: ${names.join(", ")}`
+  );
+  assertEqual(inputIndex, dropdownIndex + 1);
+});
+
 test("Empty categories do not cause errors", () => {
   const registry = new ComponentRegistry();
   registerSampleDefinitions(registry);

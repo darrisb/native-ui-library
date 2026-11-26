@@ -9,63 +9,22 @@
  * Safety contract:
  *   - Explicit URL-scheme allowlist (http, https, mailto, tel). Relative URLs
  *     (no scheme) are permitted.
+ *   - `{value}` tokens are substituted from the triggering event's `detail`
+ *     using `encodeURIComponent`, and the scheme check runs again on the final
+ *     URL so a substituted value can never introduce a dangerous scheme.
  *   - No eval, Function constructor, dynamic code execution, or embedded
  *     credentials anywhere in the dispatch path.
  *   - Unknown action types and invalid targets are rejected silently (no-op).
  *   - Edit mode short-circuits before any side effect.
  */
 
-import type { ComponentAction, NavigateAction } from "@visual-ui/core";
+import {
+  isAllowedUrl,
+  NAVIGATE_VALUE_TOKEN,
+  type ComponentAction,
+  type NavigateAction
+} from "@visual-ui/core";
 import { BrowserNavigationAdapter, type NavigationAdapter } from "./navigation-adapter.js";
-
-/**
- * URL schemes permitted for declarative navigation at the execution boundary.
- *
- * This is an explicit allowlist; any scheme not listed here (and any absolute
- * URL using it) is rejected. Relative URLs with no scheme are handled
- * separately and are always permitted.
- */
-const ALLOWED_URL_SCHEMES: readonly string[] = [
-  "http",
-  "https",
-  "mailto",
-  "tel",
-];
-
-/** URL schemes that are unconditionally blocked even if they look exotic. */
-const BLOCKED_URL_SCHEMES: readonly string[] = [
-  "javascript",
-  "data",
-  "vbscript",
-  "file",
-];
-
-/**
- * Extracts the URL scheme (the part before the first `:`), lower-cased, or
- * `null` when no absolute scheme is present (e.g. relative URLs).
- *
- * Leading whitespace and control characters are stripped first to defeat scheme
- * obfuscation (e.g. `java\nscript:`).
- */
-function extractUrlScheme(url: string): string | null {
-  const trimmed = url.replace(/^[\s\u0000-\u001f]+/, "");
-  const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
-  return match ? match[1].toLowerCase() : null;
-}
-
-/** Reports whether the URL uses a permitted (safe) scheme or is relative. */
-function isAllowedUrl(url: string): boolean {
-  const scheme = extractUrlScheme(url);
-  if (scheme === null) {
-    // Relative URL (no absolute scheme) — permitted.
-    return true;
-  }
-  // Defense in depth: reject known-dangerous schemes first.
-  if (BLOCKED_URL_SCHEMES.includes(scheme)) {
-    return false;
-  }
-  return ALLOWED_URL_SCHEMES.includes(scheme);
-}
 
 /** Type narrowing helper for `navigate` actions. */
 function isNavigateAction(
@@ -82,6 +41,48 @@ function isAllowedTarget(
   target: string | undefined
 ): target is "_self" | "_blank" | undefined {
   return target === undefined || ALLOWED_TARGETS.includes(target);
+}
+
+/**
+ * Reads the `value` carried by a triggering event's `detail`.
+ *
+ * Returns an empty string when the event is missing or carries no value so a
+ * `{value}` token always resolves to a string.
+ */
+function readEventValue(event: Event | undefined): string {
+  if (!event) {
+    return "";
+  }
+
+  const detail = (event as CustomEvent<{ value?: unknown }>).detail;
+  if (detail !== null && typeof detail === "object" && "value" in detail) {
+    const value = detail.value;
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  return "";
+}
+
+/**
+ * Resolves the `{value}` token in a navigate URL using the triggering event.
+ *
+ * URLs without the token are returned unchanged, preserving the exact
+ * pre-existing navigation behavior. When the token is present it is replaced
+ * with the event's value detail; `encode` controls whether the value is
+ * URL-encoded (the navigated form) or left raw (the safety-check form).
+ */
+function resolveNavigateUrl(
+  url: string,
+  event: Event | undefined,
+  encode: boolean
+): string {
+  if (!url.includes(NAVIGATE_VALUE_TOKEN)) {
+    return url;
+  }
+
+  const value = readEventValue(event);
+  const replacement = encode ? encodeURIComponent(value) : value;
+  return url.replaceAll(NAVIGATE_VALUE_TOKEN, replacement);
 }
 
 /**
@@ -136,13 +137,13 @@ export class ActionExecutor {
    * the surrounding render.
    *
    * @param action  The validated action to execute.
-   * @param event   The DOM event that triggered the action (unused by current
-   *                action types but part of the extensibility contract).
+   * @param event   The DOM event that triggered the action. Its `detail.value`
+   *                feeds `{value}` substitution for navigate actions.
    * @param element The rendered element the action is bound to.
    */
   execute(
     action: ComponentAction,
-    _event: Event | undefined,
+    event: Event | undefined,
     _element: HTMLElement
   ): void {
     // Never execute actions in builder edit mode.
@@ -159,10 +160,13 @@ export class ActionExecutor {
       return;
     }
 
-    this.executeNavigate(action);
+    this.executeNavigate(action, event);
   }
 
-  private executeNavigate(action: NavigateAction): void {
+  private executeNavigate(
+    action: NavigateAction,
+    event: Event | undefined
+  ): void {
     const { config } = action;
 
     if (!config || typeof config !== "object") {
@@ -173,13 +177,28 @@ export class ActionExecutor {
       return;
     }
 
-    const url = config.url;
-    if (typeof url !== "string" || url.length === 0) {
+    const rawUrl = config.url;
+    if (typeof rawUrl !== "string" || rawUrl.length === 0) {
       return;
     }
 
+    // Substitute the event value, then re-run the scheme check on the final
+    // URL. This ensures a `{value}` token cannot smuggle a dangerous scheme
+    // past the static validation performed on the template URL.
+    const url = resolveNavigateUrl(rawUrl, event, true);
     if (!isAllowedUrl(url)) {
       return;
+    }
+
+    // Defense in depth: also check the unencoded interpolation. A template
+    // such as `{value}` carrying a `javascript:` value would encode to a
+    // harmless relative URL, but the raw form is still refused so a dangerous
+    // value can never be disguised as a safe relative one.
+    if (rawUrl.includes(NAVIGATE_VALUE_TOKEN)) {
+      const rawInterpolated = resolveNavigateUrl(rawUrl, event, false);
+      if (!isAllowedUrl(rawInterpolated)) {
+        return;
+      }
     }
 
     if (config.target === "_blank") {
