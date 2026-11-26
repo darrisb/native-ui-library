@@ -67,7 +67,7 @@ import type {
 import type { Binding } from "../types/binding.js";
 import type { ComponentInstance } from "../types/component-instance.js";
 
-const { isValidDataPath } = await import("../types/data-source.js");
+const { isValidDataPath, buildRestUrl } = await import("../types/data-source.js");
 const { validateDataSourceContracts } = await import(
   "../validation/validate-data-source.js"
 );
@@ -286,6 +286,207 @@ test("a mapping value that is not a safe path is rejected", () => {
   assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
   assertIncludes(errors[0]!.path, "root.dataSource.mapping.value");
   assertIncludes(errors[0]!.message, "not a safe path");
+});
+
+// ---------------------------------------------------------------------------
+// Query parameter contracts
+// ---------------------------------------------------------------------------
+
+test("a valid REST data source with a query map is accepted", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { page: "1", sort: "name", "x.y-z_1": "v" } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a query map with exactly 30 keys is accepted", () => {
+  const query: Record<string, string> = {};
+  for (let i = 0; i < 30; i += 1) {
+    query[`key${i}`] = "v";
+  }
+  const errors = validateDataSourceContracts(
+    restDataSource({ query }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a query map with 31 keys is rejected", () => {
+  const query: Record<string, string> = {};
+  for (let i = 0; i < 31; i += 1) {
+    query[`key${i}`] = "v";
+  }
+  const errors = validateDataSourceContracts(
+    restDataSource({ query }),
+    undefined,
+    "root",
+    []
+  );
+  assertTrue(errors.length >= 1, "Expected at least one error for 31 query keys.");
+  assertIncludes(errors[0]!.message, "at most 30 keys");
+  assertIncludes(errors[0]!.path, "root.dataSource.query");
+});
+
+test("a query key with illegal characters is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { "bad key": "v", "a+b": "w" } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 2, `Expected 2 errors, got: ${JSON.stringify(errors)}`);
+  for (const error of errors) {
+    assertIncludes(error.message, "query key");
+  }
+});
+
+test("a query key longer than 64 characters is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { ["k".repeat(65)]: "v" } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "query key");
+});
+
+test("a query key of exactly 64 characters is accepted", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { ["k".repeat(64)]: "v" } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a non-string query value is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { page: 2 as unknown as string } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "must be a string");
+  assertIncludes(errors[0]!.path, "root.dataSource.query.page");
+});
+
+test("a query value longer than 500 characters is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { q: "x".repeat(501) } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "at most 500 characters");
+});
+
+test("a query value of exactly 500 characters is accepted", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { q: "x".repeat(500) } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+test("a query with a secret-like key name is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: { api_key: "secret" } }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, "must not contain secrets");
+});
+
+test("an array query is rejected", () => {
+  const errors = validateDataSourceContracts(
+    restDataSource({ query: ["a=1"] as unknown as Record<string, string> }),
+    undefined,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 1, `Expected 1 error, got: ${JSON.stringify(errors)}`);
+  assertIncludes(errors[0]!.message, '"query" must be an object');
+});
+
+test("a data source with a query survives JSON round-trip", () => {
+  const instance: ComponentInstance = {
+    id: "table-1",
+    type: "table",
+    properties: { title: "Items" },
+    dataSource: restDataSource({
+      query: { page: "1", "filter.tag": "shoe" },
+    }),
+    bindings: [{ target: "rows" }],
+  };
+  const roundTripped = JSON.parse(JSON.stringify(instance)) as ComponentInstance;
+  assertDeepEqual(roundTripped.dataSource, instance.dataSource);
+  const errors = validateDataSourceContracts(
+    roundTripped.dataSource,
+    roundTripped.bindings,
+    "root",
+    []
+  );
+  assertEqual(errors.length, 0, `Expected 0 errors, got: ${JSON.stringify(errors)}`);
+});
+
+// ---------------------------------------------------------------------------
+// buildRestUrl: query merging and encoding
+// ---------------------------------------------------------------------------
+
+test("buildRestUrl appends the query with proper encoding", () => {
+  const url = buildRestUrl("https://api.example.com/items", {
+    q: "shoes & sandals",
+    sort: "name",
+  });
+  assertEqual(url, "https://api.example.com/items?q=shoes+%26+sandals&sort=name");
+});
+
+test("buildRestUrl returns the URL unchanged when query is absent or empty", () => {
+  assertEqual(buildRestUrl("https://api.example.com/items"), "https://api.example.com/items");
+  assertEqual(buildRestUrl("https://api.example.com/items", {}), "https://api.example.com/items");
+});
+
+test("buildRestUrl merges with existing URL parameters, query winning on identical keys", () => {
+  const url = buildRestUrl("https://api.example.com/items?page=2&limit=10", {
+    page: "5",
+    sort: "name",
+  });
+  // `set` keeps an existing key's position and replaces its value; new keys
+  // are appended.
+  assertEqual(url, "https://api.example.com/items?page=5&limit=10&sort=name");
+});
+
+test("buildRestUrl preserves relative URLs", () => {
+  const url = buildRestUrl("/api/items?verbose=1", { offset: "20" });
+  assertEqual(url, "/api/items?verbose=1&offset=20");
+});
+
+test("buildRestUrl encodes values that contain delimiters", () => {
+  const url = buildRestUrl("https://api.example.com/items", {
+    filter: "a=b&c=d",
+    needle: "?x&y#z",
+  });
+  const params = new URLSearchParams(new URL(url).search);
+  assertEqual(params.get("filter"), "a=b&c=d");
+  assertEqual(params.get("needle"), "?x&y#z");
+});
+
+test("buildRestUrl keeps a trailing fragment after the merged query", () => {
+  const url = buildRestUrl("https://api.example.com/items#top", { page: "1" });
+  assertEqual(url, "https://api.example.com/items?page=1#top");
 });
 
 // ---------------------------------------------------------------------------

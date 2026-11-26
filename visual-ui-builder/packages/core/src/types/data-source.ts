@@ -109,6 +109,18 @@ export interface RestDataSource {
   readonly mapping?: DataMapping;
 
   /**
+   * Optional query parameters merged into the fetch URL at request time.
+   *
+   * Keys must match `[A-Za-z0-9_.-]{1,64}` and values must be strings of at
+   * most 500 characters (at most 30 keys total), enforced by validation.
+   * Parameters are appended with {@link URLSearchParams}, so values are
+   * always percent-encoded; for identical keys the declared `query` wins
+   * over keys already present in `url`. Secret-like key names are rejected,
+   * matching the URL query parameter secret check.
+   */
+  readonly query?: Readonly<Record<string, string>>;
+
+  /**
    * When to resolve the data source. Only `"mount"` is supported initially.
    */
   readonly loadOn: "mount";
@@ -166,4 +178,62 @@ export function isValidDataPath(path: string): boolean {
     return false;
   }
   return SAFE_DATA_PATH_PATTERN.test(path);
+}
+
+/**
+ * Builds the final fetch URL for a REST data source.
+ *
+ * The `query` parameters are merged into the URL with {@link URLSearchParams}
+ * so keys and values are always percent-encoded — never string-concatenated
+ * raw. Parameters already present in `url` are preserved, but for identical
+ * keys the declared `query` value wins. A trailing fragment (`#...`) is kept
+ * after the merged query string.
+ *
+ * Works for both absolute and relative URLs; with no (or an empty) `query`
+ * the URL is returned unchanged.
+ */
+export function buildRestUrl(
+  url: string,
+  query?: Readonly<Record<string, string>>
+): string {
+  const entries = query === undefined ? [] : Object.entries(query);
+  if (entries.length === 0) {
+    return url;
+  }
+
+  // Split the URL into base, existing query string, and trailing fragment so
+  // the existing parameters can be re-emitted through URLSearchParams as
+  // well. Handles every ordering of `?` and `#` (a `#` before `?` means the
+  // query string is part of the fragment and is left untouched).
+  const queryIndex = url.indexOf("?");
+  const fragmentIndex = url.indexOf("#");
+  const hasFragment = fragmentIndex !== -1;
+  const baseEnd =
+    queryIndex !== -1 && (!hasFragment || queryIndex < fragmentIndex)
+      ? queryIndex
+      : hasFragment
+        ? fragmentIndex
+        : url.length;
+  const base = url.slice(0, baseEnd);
+  const queryStart =
+    queryIndex !== -1 && (!hasFragment || queryIndex < fragmentIndex)
+      ? queryIndex + 1
+      : -1;
+  const existingQuery =
+    queryStart === -1
+      ? ""
+      : url.slice(queryStart, hasFragment ? fragmentIndex : url.length);
+  const fragment = hasFragment ? "#" + url.slice(fragmentIndex + 1) : "";
+
+  const params = new URLSearchParams(existingQuery);
+  for (const [key, value] of entries) {
+    // `set` replaces identical keys, so the declared query wins.
+    params.set(key, value);
+  }
+
+  const encoded = params.toString();
+  if (encoded === "") {
+    return base + fragment;
+  }
+  return base + "?" + encoded + fragment;
 }

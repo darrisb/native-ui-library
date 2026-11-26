@@ -29,7 +29,7 @@ export type {
   RestDataSource,
   StaticDataSource
 } from "./types/data-source.js";
-export { isValidDataPath } from "./types/data-source.js";
+export { buildRestUrl, isValidDataPath } from "./types/data-source.js";
 
 export type { Binding, BindingTarget } from "./types/binding.js";
 

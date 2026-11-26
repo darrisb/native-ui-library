@@ -16,12 +16,26 @@
  * before any fetch, keeping the builder canvas free of network activity.
  *
  * Concurrency / correctness:
- *   - An epoch counter is captured at the start of every resolve cycle and
- *     checked before mutating state, so a response that arrives after unmount
- *     (or after a re-mount of the same instance) is discarded rather than
- *     applied.
+ *   - A global epoch counter is captured at the start of every resolve cycle
+ *     and checked before mutating state, so a response that arrives after
+ *     unmount is discarded rather than applied.
+ *   - A per-instance request counter invalidates the instance's earlier
+ *     in-flight response whenever a newer resolve cycle starts (e.g. after
+ *     {@link DataSourceRuntime.updateQuery}), so a slow older response can
+ *     never overwrite a newer one.
  *   - A per-runtime "mounted" set prevents duplicate concurrent requests for
  *     the same instance id, avoiding refetch loops on re-render.
+ *
+ * Query parameters:
+ *   - A mounted REST instance keeps a mutable copy of its data source's
+ *     declarative `query`. Every resolve cycle fetches the URL built from
+ *     that copy via {@link buildRestUrl}.
+ *   - {@link DataSourceRuntime.updateQuery} merges changes (a `null` value
+ *     removes a key) into that copy and re-fetches exactly once.
+ *   - Mounted table instances (`<ui-table>`) additionally have their
+ *     `page-change` and `sort-change` events wired to {@link
+ *     DataSourceRuntime.updateQuery}, so paging and sorting re-fetch the
+ *     backing endpoint.
  */
 
 import type {
@@ -30,7 +44,11 @@ import type {
   MappedRecord,
   RestDataSource
 } from "@visual-ui/core";
-import { extractAndMapRecords, resolveResponsePath } from "@visual-ui/core";
+import {
+  buildRestUrl,
+  extractAndMapRecords,
+  resolveResponsePath
+} from "@visual-ui/core";
 import {
   createRestFetchAdapter,
   type RestFetchAdapter,
@@ -83,20 +101,51 @@ function isMappedRecord(value: unknown): value is MappedRecord {
   return true;
 }
 
+/** Per-instance bookkeeping for a mounted REST data source. */
+interface MountedInstanceContext {
+  /** The REST data source this instance resolved. */
+  readonly dataSource: RestDataSource;
+  /** Bindings the resolved records are applied to. */
+  readonly bindings: ComponentInstance["bindings"];
+  /** The rendered element the state and bindings are applied to. */
+  readonly element: HTMLElement;
+  /**
+   * Mutable query state for this instance. Starts as a copy of the data
+   * source's declarative `query`; {@link DataSourceRuntime.updateQuery}
+   * merges changes into it.
+   */
+  query: Record<string, string>;
+  /**
+   * Detaches the table event listeners attached at mount (present only for
+   * mounted table instances). Called on teardown.
+   */
+  detachTableListeners?: () => void;
+}
+
 export class DataSourceRuntime {
   private readonly fetchAdapter: RestFetchAdapter;
   private readonly bindingAdapters: DataBindingAdapterRegistry;
   private readonly mode: RendererMode | undefined;
 
   /**
-   * Monotonic counter. Incremented on every {@link unmount}. Each resolve
-   * cycle captures the value at its start and discards its work unless the
-   * counter is unchanged when the async result arrives.
+   * Global monotonic counter. Incremented on every {@link unmount}. Each
+   * resolve cycle captures the value at its start and discards its work
+   * unless the counter is unchanged when the async result arrives.
    */
   private epoch = 0;
 
   /** Instance ids currently mounted — guards against duplicate requests. */
   private readonly mounted = new Set<string>();
+
+  /** Bookkeeping per mounted REST instance (query state, element, ...). */
+  private readonly instances = new Map<string, MountedInstanceContext>();
+
+  /**
+   * Per-instance monotonic request counter. Every new resolve cycle for an
+   * instance bumps it; in-flight responses started under an earlier value
+   * are stale and ignored.
+   */
+  private readonly instanceEpochs = new Map<string, number>();
 
   /** Latest runtime state per mounted instance id (for introspection/tests). */
   private readonly states = new Map<string, DataSourceRuntimeState>();
@@ -141,16 +190,53 @@ export class DataSourceRuntime {
     }
 
     this.mounted.add(instance.id);
-    const requestEpoch = this.epoch;
-    this.setState(instance.id, element, { status: "loading" });
-
-    void this.resolve(
-      instance.id,
+    const context: MountedInstanceContext = {
       dataSource,
-      instance.bindings,
+      bindings: instance.bindings,
       element,
-      requestEpoch
-    );
+      // Mutable copy: runtime query state never mutates the declarative source.
+      query: { ...(dataSource.query ?? {}) },
+    };
+
+    // Tables re-fetch when the user pages or sorts, so wire their events into
+    // updateQuery. Other component types fetch once on mount only.
+    if (instance.type === "table") {
+      context.detachTableListeners = this.attachTableListeners(
+        instance.id,
+        element
+      );
+    }
+
+    this.instances.set(instance.id, context);
+    this.startResolve(instance.id);
+  }
+
+  /**
+   * Updates a mounted instance's query parameters and re-fetches exactly once.
+   *
+   * `changes` maps parameter names to their new values; a `null` value removes
+   * the key. Changes merge into the instance's current query state (which
+   * started as a copy of the data source's declarative `query`). Unknown
+   * instance ids are ignored, so stale or foreign callers are harmless.
+   */
+  updateQuery(
+    instanceId: string,
+    changes: Readonly<Record<string, string | null>>
+  ): void {
+    const context = this.instances.get(instanceId);
+    if (!context) {
+      return;
+    }
+
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) {
+        delete context.query[key];
+      } else {
+        context.query[key] = value;
+      }
+    }
+
+    this.startResolve(instanceId);
   }
 
   /**
@@ -160,7 +246,12 @@ export class DataSourceRuntime {
   unmount(): void {
     this.epoch++;
     this.fetchAdapter.abortAll();
+    for (const context of this.instances.values()) {
+      context.detachTableListeners?.();
+    }
     this.mounted.clear();
+    this.instances.clear();
+    this.instanceEpochs.clear();
     this.states.clear();
   }
 
@@ -172,7 +263,13 @@ export class DataSourceRuntime {
    * abort.
    */
   unmountInstance(instanceId: string): void {
+    const context = this.instances.get(instanceId);
+    if (context) {
+      context.detachTableListeners?.();
+    }
     this.mounted.delete(instanceId);
+    this.instances.delete(instanceId);
+    this.instanceEpochs.delete(instanceId);
     this.states.delete(instanceId);
   }
 
@@ -186,8 +283,99 @@ export class DataSourceRuntime {
     return this.mounted.has(instanceId);
   }
 
-  private isStale(requestEpoch: number, instanceId: string): boolean {
-    return this.epoch !== requestEpoch || !this.mounted.has(instanceId);
+  /**
+   * True when a resolve cycle is stale: the runtime (or the instance) was
+   * torn down, or a newer resolve cycle for the same instance has started
+   * (bumping its per-instance counter).
+   */
+  private isStale(
+    requestEpoch: number,
+    instanceId: string,
+    instanceEpoch: number
+  ): boolean {
+    return (
+      this.epoch !== requestEpoch ||
+      !this.mounted.has(instanceId) ||
+      this.instanceEpochs.get(instanceId) !== instanceEpoch
+    );
+  }
+
+  /**
+   * Starts one fetch -> map -> bind cycle for a mounted instance using its
+   * current query state. Bumps the instance's request counter first so any
+   * in-flight response from an earlier cycle becomes stale and is ignored on
+   * arrival.
+   */
+  private startResolve(instanceId: string): void {
+    const context = this.instances.get(instanceId);
+    if (!context) {
+      return;
+    }
+
+    const requestEpoch = this.epoch;
+    const instanceEpoch = (this.instanceEpochs.get(instanceId) ?? 0) + 1;
+    this.instanceEpochs.set(instanceId, instanceEpoch);
+
+    this.setState(instanceId, context.element, { status: "loading" });
+    void this.resolve(instanceId, context, requestEpoch, instanceEpoch);
+  }
+
+  /**
+   * Wires a mounted table element's `page-change` and `sort-change` events
+   * into {@link DataSourceRuntime.updateQuery}, so paging and sorting re-fetch
+   * the backing endpoint with the new query parameters. Returns the detach
+   * function the runtime calls on teardown.
+   */
+  private attachTableListeners(
+    instanceId: string,
+    element: HTMLElement
+  ): () => void {
+    const onPageChange = (event: Event): void => {
+      const detail = (event as CustomEvent).detail as
+        | { offset?: unknown; limit?: unknown }
+        | null
+        | undefined;
+      if (detail === null || typeof detail !== "object") {
+        return;
+      }
+      const changes: Record<string, string> = {};
+      if (typeof detail.limit === "number" && Number.isFinite(detail.limit)) {
+        changes.limit = String(detail.limit);
+      }
+      if (typeof detail.offset === "number" && Number.isFinite(detail.offset)) {
+        changes.offset = String(detail.offset);
+      }
+      if (Object.keys(changes).length === 0) {
+        return;
+      }
+      this.updateQuery(instanceId, changes);
+    };
+
+    const onSortChange = (event: Event): void => {
+      const detail = (event as CustomEvent).detail as
+        | { sort?: unknown }
+        | null
+        | undefined;
+      if (
+        detail === null ||
+        typeof detail !== "object" ||
+        typeof detail.sort !== "string" ||
+        detail.sort.length === 0
+      ) {
+        return;
+      }
+      // The table resets its own page on a sort, so the host reloads from the
+      // first page to stay in sync (see the <ui-table> event contract).
+      this.updateQuery(instanceId, { sort: detail.sort, offset: "0" });
+    };
+
+    element.addEventListener("page-change", onPageChange);
+    element.addEventListener("sort-change", onSortChange);
+
+    return () => {
+      element.removeEventListener("page-change", onPageChange);
+      element.removeEventListener("sort-change", onSortChange);
+    };
   }
 
   private setState(
@@ -206,20 +394,22 @@ export class DataSourceRuntime {
 
   private async resolve(
     instanceId: string,
-    dataSource: RestDataSource,
-    bindings: ComponentInstance["bindings"],
-    element: HTMLElement,
-    requestEpoch: number
+    context: MountedInstanceContext,
+    requestEpoch: number,
+    instanceEpoch: number
   ): Promise<void> {
+    const { dataSource, element } = context;
     let result: RestFetchResult<unknown>;
     try {
-      result = await this.fetchAdapter.fetchJson(dataSource.url);
+      result = await this.fetchAdapter.fetchJson(
+        buildRestUrl(dataSource.url, context.query)
+      );
     } catch {
       // The adapter never throws, but guard defensively.
       return;
     }
 
-    if (this.isStale(requestEpoch, instanceId)) {
+    if (this.isStale(requestEpoch, instanceId, instanceEpoch)) {
       return;
     }
 
@@ -237,7 +427,7 @@ export class DataSourceRuntime {
       dataSource.mapping ?? {}
     );
 
-    if (this.isStale(requestEpoch, instanceId)) {
+    if (this.isStale(requestEpoch, instanceId, instanceEpoch)) {
       return;
     }
 
@@ -257,9 +447,10 @@ export class DataSourceRuntime {
     this.applyBindings(
       instanceId,
       mapped.records,
-      bindings,
+      context.bindings,
       element,
-      requestEpoch
+      requestEpoch,
+      instanceEpoch
     );
   }
 
@@ -268,9 +459,10 @@ export class DataSourceRuntime {
     records: readonly MappedRecord[],
     bindings: ComponentInstance["bindings"],
     element: HTMLElement,
-    requestEpoch: number
+    requestEpoch: number,
+    instanceEpoch: number
   ): void {
-    if (this.isStale(requestEpoch, instanceId)) {
+    if (this.isStale(requestEpoch, instanceId, instanceEpoch)) {
       return;
     }
 
@@ -297,7 +489,7 @@ export class DataSourceRuntime {
       adapter(element, data);
     }
 
-    if (this.isStale(requestEpoch, instanceId)) {
+    if (this.isStale(requestEpoch, instanceId, instanceEpoch)) {
       return;
     }
     this.setState(instanceId, element, { status: "ready", data: records });

@@ -31,6 +31,18 @@ const ALLOWED_LOAD_ON: readonly DataSourceLoadOn[] = ["mount"];
 const ALLOWED_TARGETS: readonly BindingTarget[] = ["options", "rows"];
 
 /**
+ * Grammar for declarative query parameter names: identifiers with digits,
+ * underscores, dots, and hyphens. Bounded to 64 characters.
+ */
+const QUERY_KEY_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** Maximum number of query parameters on one data source. */
+const MAX_QUERY_KEYS = 30;
+
+/** Maximum length of one query parameter value. */
+const MAX_QUERY_VALUE_LENGTH = 500;
+
+/**
  * URL schemes that must never appear in a declarative data source URL. These
  * schemes can execute scripts, render arbitrary content, or exfiltrate data,
  * so they are unconditionally rejected — the same blocklist used by the
@@ -124,6 +136,72 @@ function validateMapping(
       });
     }
   }
+}
+
+/**
+ * Validates the optional `query` parameter map of a REST data source and
+ * pushes issues onto `errors`.
+ *
+ * The map must be a plain object with at most 30 entries; each key must match
+ * `[A-Za-z0-9_.-]{1,64}` and must not resemble a credential name; each value
+ * must be a string of at most 500 characters.
+ */
+function validateQuery(
+  query: RestDataSource["query"],
+  path: string,
+  errors: DataSourceValidationIssue[]
+): void {
+  if (query === undefined) {
+    return;
+  }
+  if (typeof query !== "object" || query === null || Array.isArray(query)) {
+    errors.push({
+      path,
+      message: `Data source "query" must be an object of string values.`
+    });
+    return;
+  }
+
+  const entries = Object.entries(query);
+  if (entries.length > MAX_QUERY_KEYS) {
+    errors.push({
+      path,
+      message: `Data source "query" must have at most ${MAX_QUERY_KEYS} keys.`
+    });
+  }
+
+  for (const [key, value] of entries) {
+    const keyPath = `${path}.${key}`;
+    if (!QUERY_KEY_PATTERN.test(key)) {
+      errors.push({
+        path: keyPath,
+        message: `Data source query key must match [A-Za-z0-9_.-]{1,64}.`
+      });
+    }
+    if (isSecretQueryParamName(key)) {
+      errors.push({
+        path: keyPath,
+        message: `Data source "query" must not contain secrets such as tokens, API keys, or passwords.`
+      });
+    }
+    if (typeof value !== "string") {
+      errors.push({
+        path: keyPath,
+        message: `Data source query value for "${key}" must be a string.`
+      });
+    } else if (value.length > MAX_QUERY_VALUE_LENGTH) {
+      errors.push({
+        path: keyPath,
+        message: `Data source query value for "${key}" must be at most ${MAX_QUERY_VALUE_LENGTH} characters.`
+      });
+    }
+  }
+}
+
+/** Reports whether a query parameter name resembles a credential or secret. */
+function isSecretQueryParamName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return SECRET_QUERY_PARAM_NAMES.includes(lower);
 }
 
 /**
@@ -222,6 +300,7 @@ function validateRestDataSource(
   }
 
   validateMapping(dataSource.mapping, `${path}.mapping`, errors);
+  validateQuery(dataSource.query, `${path}.query`, errors);
 }
 
 /**
