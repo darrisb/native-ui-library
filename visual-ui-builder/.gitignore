@@ -1,6 +1,7 @@
 node_modules
 dist
 *.tsbuildinfo
+dist-test
 build
 *.log
 .DS_Store
