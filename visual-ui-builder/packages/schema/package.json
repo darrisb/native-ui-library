@@ -1,0 +1,27 @@
+{
+  "name": "@visual-ui/schema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Schema graph inputs for Visual UI Builder",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "node dist/__tests__/parse.test.js"
+  },
+  "dependencies": {
+    "@visual-ui/core": "^0.1.0"
+  },
+  "files": [
+    "dist"
+  ]
+}
