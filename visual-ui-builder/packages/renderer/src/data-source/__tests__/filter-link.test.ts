@@ -337,8 +337,8 @@ test("input: clearing the value removes the contains.<field> key", async () => {
   );
   assertEqual(
     urls[2],
-    "https://api.example.com/orders",
-    "The cleared filter key must be absent from the URL."
+    "https://api.example.com/orders?offset=0",
+    "The cleared filter key must be absent and the offset reset to 0."
   );
 });
 
@@ -382,8 +382,8 @@ test("dropdown: selecting the placeholder (empty value) removes the eq key", asy
   assertEqual(urls.length, 3, "Clearing the dropdown must fetch exactly once.");
   assertEqual(
     urls[2],
-    "https://api.example.com/orders",
-    "The removed key must be absent from the URL."
+    "https://api.example.com/orders?offset=0",
+    "The removed key must be absent and the offset reset to 0."
   );
 });
 

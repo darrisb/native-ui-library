@@ -43,8 +43,8 @@
  *     event — plus `submit` for inputs — via {@link
  *     DataSourceRuntime.updateQuery} with `eq.<field>` or
  *     `contains.<field>` and the offset reset to the first page. An empty
- *     value removes the filter key (and the offset reset it added),
- *     returning the table to its baseline query.
+ *     value removes the filter key while still resetting the table to its
+ *     first page.
  *   - Keystrokes on an input never fetch: only the `change` and `submit`
  *     events are wired, so filtering fires on commit, not on every key.
  *   - Filter wiring is independent of the control's own data source, and a
@@ -427,8 +427,7 @@ export class DataSourceRuntime {
    * calls {@link DataSourceRuntime.updateQuery} on the target with
    * `eq.<field>` or `contains.<field>` and the offset reset to `"0"` (a new
    * filter starts from the first page). An empty value removes the filter
-   * key — and the offset reset that accompanied it — instead, returning
-   * the target to its baseline query.
+   * key while still resetting the target to its first page.
    *
    * Only the commit events are wired — an input's `input` event fires on
    * every keystroke and deliberately does not fetch.
@@ -474,10 +473,9 @@ export class DataSourceRuntime {
       const value =
         typeof detail.value === "string" ? detail.value.trim() : "";
       if (value.length === 0) {
-        // Empty value removes the filter key for the column — and the
-        // offset reset that accompanied the filter — so the table returns
-        // to its baseline query.
-        this.updateQuery(filterTarget, { [filterKey]: null, offset: null });
+        // Empty value removes only the filter key for the column. Clearing a
+        // filter is still a query change, so restart the table at page one.
+        this.updateQuery(filterTarget, { [filterKey]: null, offset: "0" });
       } else {
         // A new filter starts from the first page of the result set.
         this.updateQuery(filterTarget, { [filterKey]: value, offset: "0" });
