@@ -1,3 +1,5 @@
+import type { ComponentInstance } from "@visual-ui/core";
+
 interface TestResult {
   readonly name: string;
   readonly passed: boolean;
@@ -464,7 +466,7 @@ function collectAllIds(
   document: import("../builder-document.ts").BuilderDocument
 ): string[] {
   const ids: string[] = [];
-  function walk(instances: readonly import("../builder-document.ts").ComponentInstance[]): void {
+  function walk(instances: readonly ComponentInstance[]): void {
     for (const instance of instances) {
       ids.push(instance.id);
       const children = instance.children ?? [];

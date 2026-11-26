@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "noEmit": true,
     "composite": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
   },
   "include": ["src/**/*"],
   "references": [

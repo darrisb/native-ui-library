@@ -27,12 +27,6 @@ function assertEqual<T>(actual: T, expected: T, message?: string): void {
   }
 }
 
-function assertTrue(value: boolean, message?: string): void {
-  if (!value) {
-    throw new Error(message ?? "Expected value to be true.");
-  }
-}
-
 const {
   createDocumentHistory,
 } = await import("../document-history.ts");
