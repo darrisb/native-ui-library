@@ -36,6 +36,20 @@
  *     `page-change` and `sort-change` events wired to {@link
  *     DataSourceRuntime.updateQuery}, so paging and sorting re-fetch the
  *     backing endpoint.
+ *
+ * Filter links:
+ *   - A dropdown or input that declares `filterTarget` (an instance id) and
+ *     a valid `filterField` re-queries the target table on its `change`
+ *     event — plus `submit` for inputs — via {@link
+ *     DataSourceRuntime.updateQuery} with `eq.<field>` or
+ *     `contains.<field>` and the offset reset to the first page. An empty
+ *     value removes the filter key (and the offset reset it added),
+ *     returning the table to its baseline query.
+ *   - Keystrokes on an input never fetch: only the `change` and `submit`
+ *     events are wired, so filtering fires on commit, not on every key.
+ *   - Filter wiring is independent of the control's own data source, and a
+ *     target that is not (yet) mounted is a harmless no-op via
+ *     {@link DataSourceRuntime.updateQuery}.
  */
 
 import type {
@@ -47,6 +61,7 @@ import type {
 import {
   buildRestUrl,
   extractAndMapRecords,
+  isValidFilterField,
   resolveResponsePath
 } from "@visual-ui/core";
 import {
@@ -147,6 +162,14 @@ export class DataSourceRuntime {
    */
   private readonly instanceEpochs = new Map<string, number>();
 
+  /**
+   * Detach functions for filter-component listeners, keyed by instance id.
+   * Present for dropdown/input instances that declare a filter link —
+   * whether or not the control carries its own data source. Called on
+   * teardown (or when the same instance is mounted onto a new element).
+   */
+  private readonly filterListeners = new Map<string, () => void>();
+
   /** Latest runtime state per mounted instance id (for introspection/tests). */
   private readonly states = new Map<string, DataSourceRuntimeState>();
 
@@ -173,6 +196,17 @@ export class DataSourceRuntime {
     // Keep the builder edit canvas network-inert.
     if (this.mode !== "interactive") {
       return;
+    }
+
+    // Filter links are wired before the data source checks below because a
+    // filter control (dropdown/input) usually has no data source of its own —
+    // it only updates the query of the table it targets.
+    const detachFilterListeners = this.attachFilterListeners(instance, element);
+    if (detachFilterListeners) {
+      // Re-mounting the same instance (e.g. after a re-render) replaces the
+      // previous listeners instead of stacking duplicates on a stale element.
+      this.filterListeners.get(instance.id)?.();
+      this.filterListeners.set(instance.id, detachFilterListeners);
     }
 
     const dataSource = instance.dataSource;
@@ -249,6 +283,10 @@ export class DataSourceRuntime {
     for (const context of this.instances.values()) {
       context.detachTableListeners?.();
     }
+    for (const detach of this.filterListeners.values()) {
+      detach();
+    }
+    this.filterListeners.clear();
     this.mounted.clear();
     this.instances.clear();
     this.instanceEpochs.clear();
@@ -267,6 +305,8 @@ export class DataSourceRuntime {
     if (context) {
       context.detachTableListeners?.();
     }
+    this.filterListeners.get(instanceId)?.();
+    this.filterListeners.delete(instanceId);
     this.mounted.delete(instanceId);
     this.instances.delete(instanceId);
     this.instanceEpochs.delete(instanceId);
@@ -375,6 +415,87 @@ export class DataSourceRuntime {
     return () => {
       element.removeEventListener("page-change", onPageChange);
       element.removeEventListener("sort-change", onSortChange);
+    };
+  }
+
+  /**
+   * Wires a filter component (dropdown or input) to a target table's query
+   * state.
+   *
+   * When the instance declares a non-empty `filterTarget` and a valid
+   * `filterField`, the control's `change` event — plus `submit` for inputs —
+   * calls {@link DataSourceRuntime.updateQuery} on the target with
+   * `eq.<field>` or `contains.<field>` and the offset reset to `"0"` (a new
+   * filter starts from the first page). An empty value removes the filter
+   * key — and the offset reset that accompanied it — instead, returning
+   * the target to its baseline query.
+   *
+   * Only the commit events are wired — an input's `input` event fires on
+   * every keystroke and deliberately does not fetch.
+   *
+   * Returns a detach function, or `null` when the instance is not a filter
+   * component or its filter properties are absent or invalid. Malformed
+   * documents are ignored rather than rejected here: validation runs before
+   * rendering, and a target that is never mounted makes
+   * {@link DataSourceRuntime.updateQuery} a harmless no-op.
+   */
+  private attachFilterListeners(
+    instance: ComponentInstance,
+    element: HTMLElement
+  ): (() => void) | null {
+    if (instance.type !== "dropdown" && instance.type !== "input") {
+      return null;
+    }
+
+    const properties = instance.properties;
+    const filterTarget = properties.filterTarget;
+    const filterField = properties.filterField;
+    if (typeof filterTarget !== "string" || filterTarget.length === 0) {
+      return null;
+    }
+    if (!isValidFilterField(filterField)) {
+      return null;
+    }
+
+    // `contains` is only valid on inputs (the document validator enforces
+    // this); anything else falls back to the default mode.
+    const filterMode = properties.filterMode === "contains" ? "contains" : "eq";
+    const filterKey = `${filterMode}.${filterField}`;
+
+    const onFilter = (event: Event): void => {
+      const detail = (event as CustomEvent).detail as
+        | { value?: unknown }
+        | null
+        | undefined;
+      if (detail === null || typeof detail !== "object") {
+        return;
+      }
+      // Trimmed: a whitespace-only entry counts as clearing the filter.
+      const value =
+        typeof detail.value === "string" ? detail.value.trim() : "";
+      if (value.length === 0) {
+        // Empty value removes the filter key for the column — and the
+        // offset reset that accompanied the filter — so the table returns
+        // to its baseline query.
+        this.updateQuery(filterTarget, { [filterKey]: null, offset: null });
+      } else {
+        // A new filter starts from the first page of the result set.
+        this.updateQuery(filterTarget, { [filterKey]: value, offset: "0" });
+      }
+    };
+
+    // Inputs also fire on submit (Enter); keystrokes (the `input` event)
+    // never fetch.
+    const eventTypes =
+      instance.type === "input" ? ["change", "submit"] : ["change"];
+    for (const type of eventTypes) {
+      element.addEventListener(type, onFilter);
+    }
+
+    return () => {
+      for (const type of eventTypes) {
+        element.removeEventListener(type, onFilter);
+      }
     };
   }
 

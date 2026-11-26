@@ -59,6 +59,14 @@ export {
 export type { DataSourceValidationIssue } from "./validation/validate-data-source.js";
 export { validateDataSourceContracts } from "./validation/validate-data-source.js";
 
+export {
+  FILTER_FIELD_PATTERN,
+  FILTER_MODES,
+  isValidFilterField,
+  validateFilterLinks
+} from "./validation/validate-filter.js";
+export type { FilterMode } from "./validation/validate-filter.js";
+
 export type {
   ResolveResponsePathErrorCode,
   ResolveResponsePathError,

@@ -177,6 +177,25 @@ export const dropdownDefinition: ComponentDefinition = {
       type: "string",
       label: "Value Field",
       defaultValue: "value"
+    },
+    {
+      name: "filterTarget",
+      type: "string",
+      label: "Filter Target",
+      defaultValue: ""
+    },
+    {
+      name: "filterField",
+      type: "string",
+      label: "Filter Field",
+      defaultValue: ""
+    },
+    {
+      name: "filterMode",
+      type: "select",
+      label: "Filter Mode",
+      defaultValue: "eq",
+      choices: ["eq", "contains"] as const
     }
   ]
 };
@@ -276,6 +295,25 @@ export const inputDefinition: ComponentDefinition = {
       type: "string",
       label: "Value Field",
       defaultValue: "value"
+    },
+    {
+      name: "filterTarget",
+      type: "string",
+      label: "Filter Target",
+      defaultValue: ""
+    },
+    {
+      name: "filterField",
+      type: "string",
+      label: "Filter Field",
+      defaultValue: ""
+    },
+    {
+      name: "filterMode",
+      type: "select",
+      label: "Filter Mode",
+      defaultValue: "eq",
+      choices: ["eq", "contains"] as const
     }
   ]
 };

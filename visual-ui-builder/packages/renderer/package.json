@@ -16,12 +16,13 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "node dist/__tests__/render-component.test.js && node dist/__tests__/execute-action.test.js && node dist/__tests__/action-event-wiring.test.js && node dist/__tests__/action-event-wiring-click.test.js && node dist/__tests__/data-source-runtime.test.js && node dist/data-source/__tests__/query-parameters.test.js",
+    "test": "node dist/__tests__/render-component.test.js && node dist/__tests__/execute-action.test.js && node dist/__tests__/action-event-wiring.test.js && node dist/__tests__/action-event-wiring-click.test.js && node dist/__tests__/data-source-runtime.test.js && node dist/data-source/__tests__/query-parameters.test.js && node dist/data-source/__tests__/filter-link.test.js",
     "test:execute-action": "node dist/__tests__/execute-action.test.js",
     "test:action-wiring": "node dist/__tests__/action-event-wiring.test.js",
     "test:action-wiring-click": "node dist/__tests__/action-event-wiring-click.test.js",
     "test:data-source-runtime": "node dist/__tests__/data-source-runtime.test.js",
-    "test:query-parameters": "node dist/data-source/__tests__/query-parameters.test.js"
+    "test:query-parameters": "node dist/data-source/__tests__/query-parameters.test.js",
+    "test:filter-link": "node dist/data-source/__tests__/filter-link.test.js"
   },
   "dependencies": {
     "@visual-ui/core": "^0.1.0",

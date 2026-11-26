@@ -128,6 +128,21 @@ const dropdownAdapter: PropertyAdapter = (element, properties) => {
       String(properties.dataSourceValueField)
     );
   }
+
+  // Filter-link properties: written as data attributes so the data source
+  // runtime (and the builder canvas) can see which table this control
+  // filters and on which column.
+  if (properties.filterTarget !== undefined) {
+    element.setAttribute("data-filter-target", String(properties.filterTarget));
+  }
+
+  if (properties.filterField !== undefined) {
+    element.setAttribute("data-filter-field", String(properties.filterField));
+  }
+
+  if (properties.filterMode !== undefined) {
+    element.setAttribute("data-filter-mode", String(properties.filterMode));
+  }
 };
 
 const inputAdapter: PropertyAdapter = (element, properties) => {
@@ -203,6 +218,21 @@ const inputAdapter: PropertyAdapter = (element, properties) => {
       "data-source-value-field",
       String(properties.dataSourceValueField)
     );
+  }
+
+  // Filter-link properties: written as data attributes so the data source
+  // runtime (and the builder canvas) can see which table this control
+  // filters and on which column.
+  if (properties.filterTarget !== undefined) {
+    element.setAttribute("data-filter-target", String(properties.filterTarget));
+  }
+
+  if (properties.filterField !== undefined) {
+    element.setAttribute("data-filter-field", String(properties.filterField));
+  }
+
+  if (properties.filterMode !== undefined) {
+    element.setAttribute("data-filter-mode", String(properties.filterMode));
   }
 };
 
