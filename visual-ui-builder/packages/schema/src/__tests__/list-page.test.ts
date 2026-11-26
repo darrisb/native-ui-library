@@ -127,4 +127,29 @@ assert(
 );
 validateDocument(unsafeNames);
 
+// A relationship to a non-key column (a unique code) uses that column as the option value.
+const codeGraph = parseSchemaGraph({
+  ...graphDocument,
+  entities: [
+    graphDocument.entities[0],
+    {
+      ...graphDocument.entities[1],
+      columns: [
+        ...graphDocument.entities[1].columns,
+        { id: "customer.code", name: "code", type: "varchar", category: "TEXT", nullable: false, label: "Code" },
+      ],
+    },
+  ],
+  relationships: [
+    { id: "customer-code", from: "order.customer_id", to: "customer.code", origin: "manual", scope: "cross-source", status: "confirmed" },
+  ],
+});
+const codeFilter = flatten(generateListPage(codeGraph, "commerce.orders", { apiBaseUrl: "/backend" }))
+  .find(({ type }) => type === "dropdown");
+assert(codeFilter !== undefined, "A relationship to a non-key column should still generate a filter");
+const codeSource = codeFilter.dataSource as { mapping?: Record<string, string>; query?: Record<string, string> };
+assert(codeSource.mapping?.value === "code", "The option value should come from the referenced column");
+assert(codeSource.query?.fields?.split(",")[0] === "code", "The fields query should request the referenced column");
+validateDocument(generateListPage(codeGraph, "commerce.orders", { apiBaseUrl: "/backend" }));
+
 console.log("[PASS] list-page generation, relationship filters, unsafe names, stability, and validation");

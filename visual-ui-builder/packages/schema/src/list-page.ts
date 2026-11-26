@@ -108,7 +108,10 @@ export function generateListPage(
     const target = graph.entities.find((candidate) =>
       candidate.columns.some(({ id }) => id === relationship.to)
     );
-    const key = target?.keyColumns[0];
+    // The option value is the column the relationship points at. That is usually
+    // the target's key, but a manual or declared relationship may reference another
+    // unique column (for example a code), and the filter must send matching values.
+    const key = target?.columns.find(({ id }) => id === relationship.to)?.name;
     if (target === undefined || key === undefined) continue;
     const label = labelColumn(target, key);
     if (label === undefined) continue;
