@@ -13,3 +13,6 @@ export {
   parseSchemaGraph,
   usableRelationships,
 } from "./parse.js";
+
+export type { GenerateListPageOptions } from "./list-page.js";
+export { generateListPage } from "./list-page.js";

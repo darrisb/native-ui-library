@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "node dist/__tests__/parse.test.js"
+    "test": "node dist/__tests__/parse.test.js && node dist/__tests__/list-page.test.js"
   },
   "dependencies": {
     "@visual-ui/core": "^0.1.0"
