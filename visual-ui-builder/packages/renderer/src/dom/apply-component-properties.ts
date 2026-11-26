@@ -1,5 +1,5 @@
 import type { ComponentInstance } from "@visual-ui/core";
-import { parseStaticOptions } from "@visual-ui/core";
+import { parseStaticOptions, parseTableColumns } from "@visual-ui/core";
 
 type PropertyAdapter = (
   element: HTMLElement,
@@ -206,12 +206,32 @@ const inputAdapter: PropertyAdapter = (element, properties) => {
   }
 };
 
+const tableAdapter: PropertyAdapter = (element, properties) => {
+  if (properties.columns !== undefined) {
+    const columns = parseTableColumns(String(properties.columns));
+    element.setAttribute("columns", JSON.stringify(columns));
+  }
+
+  if (
+    typeof properties.pageSize === "number" &&
+    Number.isInteger(properties.pageSize) &&
+    properties.pageSize > 0
+  ) {
+    element.setAttribute("page-size", String(properties.pageSize));
+  }
+
+  if (properties.sort !== undefined) {
+    element.setAttribute("sort", String(properties.sort));
+  }
+};
+
 const adapters = new Map<string, PropertyAdapter>([
   ["card", cardAdapter],
   ["text", textAdapter],
   ["button", buttonAdapter],
   ["dropdown", dropdownAdapter],
   ["input", inputAdapter],
+  ["table", tableAdapter],
 ]);
 
 export function applyComponentProperties(

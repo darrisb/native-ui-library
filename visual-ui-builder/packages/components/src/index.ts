@@ -13,6 +13,7 @@ export {
   registerDropdown,
   registerInput,
   registerNativeComponents,
+  registerTable,
   registerText,
 } from "./registry/index.js";
 

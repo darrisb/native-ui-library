@@ -42,6 +42,7 @@ export {
   inputDefinition,
   registerSampleDefinitions,
   sampleDefinitions,
+  tableDefinition,
   textDefinition
 } from "./definitions/sample-definitions.js";
 
@@ -87,3 +88,6 @@ export {
 
 export type { DropdownOption as StaticDropdownOption } from "./data/parse-static-options.js";
 export { parseStaticOptions } from "./data/parse-static-options.js";
+
+export type { TableColumn } from "./data/parse-table-columns.js";
+export { parseTableColumns } from "./data/parse-table-columns.js";

@@ -93,6 +93,7 @@ const {
   registerCard,
   registerInput,
   registerNativeComponents,
+  registerTable,
   registerText,
 } = await import("../registry/index.js");
 
@@ -266,7 +267,7 @@ test("validates nested children recursively", () => {
   );
 });
 
-test("registerNativeComponents registers Card, Text, Button, Dropdown, and Input", () => {
+test("registerNativeComponents registers Card, Text, Button, Dropdown, Input, and Table", () => {
   const metadataRegistry = new ComponentRegistry();
   const nativeRegistry = new NativeComponentRegistry();
   registerNativeComponents(metadataRegistry, nativeRegistry);
@@ -280,6 +281,8 @@ test("registerNativeComponents registers Card, Text, Button, Dropdown, and Input
   assertEqual(nativeRegistry.lookupTag("dropdown"), "ui-dropdown");
   assertEqual(metadataRegistry.lookup("input")?.type, "input");
   assertEqual(nativeRegistry.lookupTag("input"), "ui-input");
+  assertEqual(metadataRegistry.lookup("table")?.type, "table");
+  assertEqual(nativeRegistry.lookupTag("table"), "ui-table");
 });
 
 test("shared registry is used by default", () => {
@@ -366,6 +369,28 @@ test("Input registration is idempotent", () => {
   const nativeRegistry = new NativeComponentRegistry();
   registerInput(metadataRegistry, nativeRegistry);
   registerInput(metadataRegistry, nativeRegistry);
+  assertEqual(metadataRegistry.list().length, 1);
+  assertEqual(nativeRegistry.list().length, 1);
+});
+
+test("registers Table metadata", () => {
+  const metadataRegistry = new ComponentRegistry();
+  registerTable(metadataRegistry);
+  assertEqual(metadataRegistry.lookup("table")?.type, "table");
+});
+
+test("registers native table tag mapping", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerTable(metadataRegistry, nativeRegistry);
+  assertEqual(nativeRegistry.lookupTag("table"), "ui-table");
+});
+
+test("Table registration is idempotent", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerTable(metadataRegistry, nativeRegistry);
+  registerTable(metadataRegistry, nativeRegistry);
   assertEqual(metadataRegistry.list().length, 1);
   assertEqual(nativeRegistry.list().length, 1);
 });

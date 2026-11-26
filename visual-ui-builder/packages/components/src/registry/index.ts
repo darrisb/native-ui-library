@@ -8,5 +8,6 @@ export {
   registerDropdown,
   registerInput,
   registerNativeComponents,
+  registerTable,
   registerText,
 } from "./register-native-components.js";

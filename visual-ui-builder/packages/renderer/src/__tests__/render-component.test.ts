@@ -101,6 +101,7 @@ function installMockDom(): void {
       "ui-button",
       "ui-dropdown",
       "ui-input",
+      "ui-table",
     ]);
       return defined.has(name) ? {} : undefined;
     },
@@ -122,6 +123,7 @@ const {
   registerButton,
   registerDropdown,
   registerInput,
+  registerTable,
 } = await import("@visual-ui/components");
 const { renderComponent } = await import("../dom/render-component.js");
 
@@ -148,6 +150,7 @@ function createRegistries() {
   registerButton(metadataRegistry, nativeRegistry);
   registerDropdown(metadataRegistry, nativeRegistry);
   registerInput(metadataRegistry, nativeRegistry);
+  registerTable(metadataRegistry, nativeRegistry);
   return { metadataRegistry, nativeRegistry };
 }
 
@@ -1001,6 +1004,154 @@ test("Input with children is rejected", () => {
     );
   }
   assertTrue(threw, "Expected Input with children to throw.");
+});
+
+// -- Table tests --
+
+test("Table renders as ui-table element with mapped properties", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "table-1",
+    type: "table",
+    properties: {
+      columns: "name|Full Name\nprice|Price (€)\nstatus",
+      pageSize: 25,
+      sort: "name",
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-table");
+  const columnsAttr = element.getAttribute("columns");
+  assertTrue(columnsAttr !== null, "Expected columns attribute to be set.");
+  const parsed = JSON.parse(columnsAttr!);
+  assertEqual(parsed.length, 3);
+  assertEqual(parsed[0].field, "name");
+  assertEqual(parsed[0].label, "Full Name");
+  assertEqual(parsed[1].field, "price");
+  assertEqual(parsed[1].label, "Price (€)");
+  assertEqual(parsed[2].field, "status");
+  assertEqual(parsed[2].label, "status");
+  assertEqual(element.getAttribute("page-size"), "25");
+  assertEqual(element.getAttribute("sort"), "name");
+});
+
+test("Table columns are rendered as a JSON attribute", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "table-2",
+    type: "table",
+    properties: {
+      columns: "id|ID\ncode\n\nsku|SKU | reference",
+      sort: "-code",
+    },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.nodeName, "ui-table");
+  assertEqual(
+    element.getAttribute("columns"),
+    JSON.stringify([
+      { field: "id", label: "ID" },
+      { field: "code", label: "code" },
+      { field: "sku", label: "SKU | reference" },
+    ])
+  );
+  assertEqual(element.getAttribute("sort"), "-code");
+  assertEqual(element.getAttribute("page-size"), null);
+});
+
+test("Table empty columns render as an empty JSON array", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "table-3",
+    type: "table",
+    properties: { columns: "" },
+  };
+  const element = renderComponent(instance, { metadataRegistry, nativeRegistry });
+  assertEqual(element.getAttribute("columns"), "[]");
+});
+
+test("Table pageSize is rendered only for positive integers", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+
+  const zero = renderComponent(
+    {
+      id: "table-max-zero",
+      type: "table",
+      properties: { pageSize: 0 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(zero.getAttribute("page-size"), null);
+
+  const negative = renderComponent(
+    {
+      id: "table-max-negative",
+      type: "table",
+      properties: { pageSize: -5 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(negative.getAttribute("page-size"), null);
+
+  const fractional = renderComponent(
+    {
+      id: "table-max-fractional",
+      type: "table",
+      properties: { pageSize: 2.5 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(fractional.getAttribute("page-size"), null);
+
+  const positive = renderComponent(
+    {
+      id: "table-max-positive",
+      type: "table",
+      properties: { pageSize: 25 },
+    },
+    { metadataRegistry, nativeRegistry }
+  );
+  assertEqual(positive.getAttribute("page-size"), "25");
+});
+
+test("Table with children is rejected", () => {
+  const { metadataRegistry, nativeRegistry } = createRegistries();
+  const instance = {
+    id: "table-parent",
+    type: "table",
+    properties: { columns: "name|Name" },
+    children: [
+      {
+        id: "text-child",
+        type: "text",
+        properties: { content: "Child" },
+      },
+    ],
+  };
+  let threw = false;
+  try {
+    renderComponent(instance, { metadataRegistry, nativeRegistry });
+  } catch (error) {
+    threw = true;
+    assertTrue(
+      error instanceof Error && error.message.includes("does not allow children"),
+      `Expected disallow-children error, got: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  assertTrue(threw, "Expected Table with children to throw.");
+});
+
+test("Calling registerTable twice does not throw", () => {
+  const metadataRegistry = new ComponentRegistry();
+  const nativeRegistry = new NativeComponentRegistry();
+  registerTable(metadataRegistry, nativeRegistry);
+  let threw = false;
+  try {
+    registerTable(metadataRegistry, nativeRegistry);
+  } catch {
+    threw = true;
+  }
+  assertTrue(!threw, "Expected second registerTable call to not throw.");
 });
 
 const passed = results.filter((result) => result.passed).length;

@@ -115,6 +115,10 @@ const tableStyles = `
   font-size: 0.75rem;
   color: var(--ui-table-error-color);
 }
+
+[part="error"][hidden] {
+  display: none;
+}
 `;
 
 type TableColumn = {
@@ -231,7 +235,9 @@ function getStatus(el: UITable): DataSourceStatus {
  * Events:
  * - sort-change: bubbling, composed CustomEvent fired when a column header is
  *                clicked, with detail {sort} ("field", then "-field" on a
- *                second click on the same header)
+ *                second click on the same header); the host is expected
+ *                to reload from offset 0, and the component resets its
+ *                tracked offset accordingly
  * - page-change: bubbling, composed CustomEvent fired when the Previous or
  *                Next button is clicked, with detail {offset, limit}
  */
@@ -253,6 +259,10 @@ export class UITable extends HTMLElement {
   private previousBtn: HTMLButtonElement;
   private nextBtn: HTMLButtonElement;
   private errorEl: HTMLDivElement;
+  /** Header cells currently rendered, reused while the column set is unchanged. */
+  private headerCells: Array<{ field: string; th: HTMLTableCellElement }> = [];
+  /** Signature of the column set the header was last built from. */
+  private headerKey: string | null = null;
   /** Offset of the page currently displayed, tracked between page-change requests. */
   private _offset = 0;
 
@@ -301,6 +311,7 @@ export class UITable extends HTMLElement {
 
     this.errorEl = document.createElement("div");
     this.errorEl.setAttribute("part", "error");
+    this.errorEl.setAttribute("hidden", "");
     shadow.appendChild(this.errorEl);
   }
 
@@ -334,15 +345,13 @@ export class UITable extends HTMLElement {
 
     if (status === "loading") {
       this.tableEl.setAttribute("aria-busy", "true");
-      this.errorEl.textContent = "";
+      this.setErrorText("");
       this.renderTbodyMessage("Loading\u2026", columns.length);
     } else {
       this.tableEl.removeAttribute("aria-busy");
-      if (status === "error") {
-        this.errorEl.textContent = this.getAttribute("data-ds-error") ?? "";
-      } else {
-        this.errorEl.textContent = "";
-      }
+      this.setErrorText(
+        status === "error" ? (this.getAttribute("data-ds-error") ?? "") : "",
+      );
       if (status === "empty") {
         this.renderTbodyMessage("No rows", columns.length);
       } else {
@@ -367,21 +376,44 @@ export class UITable extends HTMLElement {
     setButtonDisabled(this.nextBtn, status === "loading" || rowCount < pageSize);
   }
 
+  /** Shows the message in part="error", hiding the part when there is none. */
+  private setErrorText(message: string): void {
+    this.errorEl.textContent = message;
+    if (message === "") {
+      this.errorEl.setAttribute("hidden", "");
+    } else {
+      this.errorEl.removeAttribute("hidden");
+    }
+  }
+
+  /**
+   * Renders the header row. The header cells are only rebuilt when the column
+   * set changes, so a sort click keeps keyboard focus on its header button;
+   * otherwise just aria-sort is refreshed.
+   */
   private renderHead(
     columns: readonly TableColumn[],
     sort: string,
   ): void {
+    const key = JSON.stringify(columns);
+    if (key !== this.headerKey) {
+      this.buildHead(columns);
+      this.headerKey = key;
+    }
+    for (const { field, th } of this.headerCells) {
+      th.setAttribute("aria-sort", this.ariaSortFor(field, sort));
+    }
+  }
+
+  private buildHead(columns: readonly TableColumn[]): void {
     const tr = document.createElement("tr");
-    tr.setAttribute("part", "row");
+    tr.setAttribute("part", "header-row");
+    const cells: Array<{ field: string; th: HTMLTableCellElement }> = [];
 
     for (const column of columns) {
       const th = document.createElement("th");
       th.setAttribute("part", "header");
       th.setAttribute("scope", "col");
-      th.setAttribute(
-        "aria-sort",
-        this.ariaSortFor(column.field, sort),
-      );
 
       const button = document.createElement("button");
       button.setAttribute("part", "header-button");
@@ -393,8 +425,10 @@ export class UITable extends HTMLElement {
 
       th.appendChild(button);
       tr.appendChild(th);
+      cells.push({ field: column.field, th });
     }
 
+    this.headerCells = cells;
     this.theadEl.replaceChildren(tr);
   }
 
@@ -414,6 +448,7 @@ export class UITable extends HTMLElement {
    * ascending header sorts descending, and clicking the descending header
    * goes back to ascending. The requested order is reflected on the sort
    * attribute and announced via a bubbling, composed sort-change event.
+   * A new order starts from the first page, so the tracked offset resets.
    */
   private toggleSort(field: string): void {
     const current = this.getAttribute("sort") ?? "";
@@ -425,6 +460,7 @@ export class UITable extends HTMLElement {
     } else {
       next = field;
     }
+    this._offset = 0;
     this.setAttribute("sort", next);
     this.dispatchEvent(
       new CustomEvent("sort-change", {

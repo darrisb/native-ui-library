@@ -152,7 +152,16 @@ class MockElement extends MockNode {
   }
 
   removeAttribute(name: string): void {
-    this.attributes.delete(name.toLowerCase());
+    const lowerName = name.toLowerCase();
+    const oldValue = this.attributes.get(lowerName) ?? null;
+    this.attributes.delete(lowerName);
+    const customLike = this as unknown as CustomElementLike;
+    if (
+      typeof customLike.attributeChangedCallback === "function" &&
+      oldValue !== null
+    ) {
+      customLike.attributeChangedCallback(lowerName, oldValue, null);
+    }
   }
 
   attachShadow(_init: { mode: string }): MockShadowRoot {
@@ -576,6 +585,63 @@ test("Error state shows the data-ds-error message in part=error", () => {
     null,
     "Expected no aria-busy in the error state."
   );
+});
+
+test("part=error is hidden when there is no error and cleared after recovery", () => {
+  const element = createTableElement();
+  const errorEl = findError(element)!;
+  assertEqual(errorEl.getAttribute("hidden"), "", "Expected part=error hidden initially.");
+
+  element.setAttribute("data-ds-error", "Failed to load rows");
+  element.setAttribute("data-ds-status", "error");
+  assertEqual(errorEl.getAttribute("hidden"), null, "Expected part=error visible on error.");
+
+  element.removeAttribute("data-ds-status");
+  assertEqual(errorEl.textContent, "", "Expected the error text to clear.");
+  assertEqual(errorEl.getAttribute("hidden"), "", "Expected part=error hidden again.");
+});
+
+test("Sort clicks keep the same header buttons so focus is not lost", () => {
+  const element = createTableElement();
+  element.setAttribute("data-bound-rows", JSON.stringify([{ name: "a", age: 1 }]));
+
+  const before = getHeaderButton(getHeaderCells(element)[0]);
+  clickHeader(element, 0);
+  const after = getHeaderButton(getHeaderCells(element)[0]);
+  assertTrue(before === after, "Expected the header button to be reused after sorting.");
+  assertEqual(getHeaderCells(element)[0].getAttribute("aria-sort"), "ascending");
+
+  element.setAttribute("columns", JSON.stringify([{ field: "age", label: "Age" }]));
+  assertEqual(getHeaderCells(element).length, 1, "Expected header rebuilt for new columns.");
+  assertEqual(getHeaderButton(getHeaderCells(element)[0])!.textContent, "Age");
+});
+
+test("Header row uses part=header-row, not the body row part", () => {
+  const element = createTableElement();
+  element.setAttribute("data-bound-rows", JSON.stringify([{ name: "a" }]));
+  const headRow = getTableRows(findHead(element))[0];
+  assertEqual(headRow.getAttribute("part"), "header-row");
+});
+
+test("Changing the sort resets the tracked offset to the first page", () => {
+  const element = createTableElement();
+  element.setAttribute("page-size", "2");
+  element.setAttribute("data-bound-rows", JSON.stringify([{ name: "a" }, { name: "b" }]));
+
+  const events: MockEvent[] = [];
+  (element as unknown as MockElement).addEventListener(
+    "page-change",
+    (e: MockEvent) => events.push(e)
+  );
+
+  findNext(element)!.dispatchEvent(new MockEvent("click", { bubbles: true, composed: true }));
+  assertTrue(!findPrevious(element)!.disabled, "Expected Previous enabled at offset 2.");
+
+  clickHeader(element, 0);
+  assertTrue(findPrevious(element)!.disabled, "Expected Previous disabled after a sort change.");
+
+  findNext(element)!.dispatchEvent(new MockEvent("click", { bubbles: true, composed: true }));
+  assertEqual(events[events.length - 1].detail.offset, 2, "Expected paging to restart from 0.");
 });
 
 test("Invalid data-bound-rows JSON renders no rows without throwing", () => {

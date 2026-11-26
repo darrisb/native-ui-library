@@ -114,3 +114,7 @@
   font-size: 0.75rem;
   color: var(--ui-table-error-color);
 }
+
+[part="error"][hidden] {
+  display: none;
+}

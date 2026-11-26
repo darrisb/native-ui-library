@@ -280,13 +280,44 @@ export const inputDefinition: ComponentDefinition = {
   ]
 };
 
+export const tableDefinition: ComponentDefinition = {
+  type: "table",
+  name: "Table",
+  category: "data",
+  description: "Read-only data table for list pages.",
+  allowChildren: false,
+  dataBinding: ["rows"],
+  properties: [
+    {
+      name: "columns",
+      type: "string",
+      label: "Columns",
+      defaultValue: "",
+      multiline: true
+    },
+    {
+      name: "pageSize",
+      type: "number",
+      label: "Page Size",
+      defaultValue: 25
+    },
+    {
+      name: "sort",
+      type: "string",
+      label: "Sort",
+      defaultValue: ""
+    }
+  ]
+};
+
 /** All sample component definitions. */
 export const sampleDefinitions: readonly ComponentDefinition[] = [
   cardDefinition,
   buttonDefinition,
   textDefinition,
   dropdownDefinition,
-  inputDefinition
+  inputDefinition,
+  tableDefinition
 ];
 
 /** Registers all sample definitions on the supplied registry. */

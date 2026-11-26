@@ -114,6 +114,17 @@ test("Input appears under Forms next to Dropdown", () => {
   assertEqual(inputIndex, dropdownIndex + 1);
 });
 
+test("Table appears under Data", () => {
+  const registry = new ComponentRegistry();
+  registerSampleDefinitions(registry);
+  const groups = getPaletteGroups(registry);
+  const data = findGroup(groups, "Data");
+  assertTrue(
+    getComponentNames(data).includes("Table"),
+    `Expected Table in Data, got: ${getComponentNames(data).join(", ")}`
+  );
+});
+
 test("Empty categories do not cause errors", () => {
   const registry = new ComponentRegistry();
   registerSampleDefinitions(registry);

@@ -248,6 +248,12 @@ test("Builder's native registry resolves Input", () => {
   assertEqual(nativeRegistry.lookupTag("input"), "ui-input");
 });
 
+test("Builder's native registry resolves Table", () => {
+  const nativeRegistry = new NativeComponentRegistry();
+  registerBuilderNativeComponents(nativeRegistry);
+  assertEqual(nativeRegistry.lookupTag("table"), "ui-table");
+});
+
 test("Nested development fixture renders without missing-mapping errors", () => {
   const nativeRegistry = getNativeComponentRegistry();
   registerBuilderNativeComponents(nativeRegistry);
