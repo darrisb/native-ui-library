@@ -4,6 +4,7 @@ import type {
   GraphEntity,
   GraphRelationship,
   GraphRelationshipStatus,
+  GraphSource,
   SchemaGraph,
 } from "./types.js";
 
@@ -24,6 +25,15 @@ function record(value: unknown, field: string): Record<string, unknown> {
 function string(value: unknown, field: string): string {
   if (typeof value !== "string") throw new Error(`Invalid field ${field}`);
   return value;
+}
+
+/**
+ * Optional text: Schema to Entity sends null (or omits the field) when nothing
+ * was set, for example a label nobody added in the overlay. Normalised to "".
+ */
+function optionalString(value: unknown, field: string): string {
+  if (value === undefined || value === null) return "";
+  return string(value, field);
 }
 
 function boolean(value: unknown, field: string): boolean {
@@ -58,7 +68,8 @@ function parseColumn(value: unknown, field: string): GraphColumn {
     type: string(input.type, `${field}.type`),
     category: oneOf(input.category, COLUMN_CATEGORIES, `${field}.category`),
     nullable: boolean(input.nullable, `${field}.nullable`),
-    label: string(input.label, `${field}.label`),
+    label: optionalString(input.label, `${field}.label`),
+    description: optionalString(input.description, `${field}.description`),
   };
 }
 
@@ -69,7 +80,8 @@ function parseEntity(value: unknown, field: string): GraphEntity {
     source: string(input.source, `${field}.source`),
     name: string(input.name, `${field}.name`),
     kind: string(input.kind, `${field}.kind`),
-    label: string(input.label, `${field}.label`),
+    label: optionalString(input.label, `${field}.label`),
+    description: optionalString(input.description, `${field}.description`),
     keyColumns: parseStringArray(input.keyColumns, `${field}.keyColumns`),
     columns: array(input.columns, `${field}.columns`).map((column, index) =>
       parseColumn(column, `${field}.columns[${index}]`)
@@ -89,12 +101,32 @@ function parseRelationship(value: unknown, field: string): GraphRelationship {
   };
 }
 
+/**
+ * Sources arrive as objects from Schema to Entity's GET /api/graph
+ * ({id, databaseType, status, ...}); plain source-name strings are accepted too.
+ */
+function parseSource(value: unknown, field: string): GraphSource {
+  if (typeof value === "string") {
+    return { id: value, databaseType: "", status: "ok" };
+  }
+  const input = record(value, field);
+  return {
+    id: string(input.id, `${field}.id`),
+    databaseType: optionalString(input.databaseType, `${field}.databaseType`),
+    status: optionalString(input.status, `${field}.status`) || "ok",
+  };
+}
+
 /** Parse and validate a Schema to Entity graph document. */
 export function parseSchemaGraph(json: unknown): SchemaGraph {
   const input = record(json, "graph");
+  const sourceDetails = array(input.sources, "sources").map((source, index) =>
+    parseSource(source, `sources[${index}]`)
+  );
   return {
     specVersion: string(input.specVersion, "specVersion"),
-    sources: parseStringArray(input.sources, "sources"),
+    sourceDetails,
+    sources: sourceDetails.map(({ id }) => id),
     entities: array(input.entities, "entities").map((entity, index) =>
       parseEntity(entity, `entities[${index}]`)
     ),

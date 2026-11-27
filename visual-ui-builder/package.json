@@ -17,7 +17,8 @@
     "test:json-renderer": "tsc --build examples/json-renderer/tsconfig.json && node examples/json-renderer/dist-test/__tests__/json-renderer.test.js && node examples/json-renderer/dist-test/__tests__/input-workflow.test.js",
     "dev:schema-pages": "vite --config examples/schema-pages/vite.config.ts",
     "build:schema-pages": "vite build --config examples/schema-pages/vite.config.ts",
-    "test:schema-pages": "tsc --build examples/schema-pages/tsconfig.json && node examples/schema-pages/dist-test/__tests__/schema-pages.test.js"
+    "test:schema-pages": "tsc --build examples/schema-pages/tsconfig.json && node examples/schema-pages/dist-test/__tests__/schema-pages.test.js",
+    "pack:packages": "npm run build --workspace=@visual-ui/core && npm run build --workspace=@visual-ui/components && npm run build --workspace=@visual-ui/renderer && npm run build --workspace=@visual-ui/schema && npm pack --workspace=@visual-ui/core --workspace=@visual-ui/components --workspace=@visual-ui/renderer --workspace=@visual-ui/schema --pack-destination release"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
