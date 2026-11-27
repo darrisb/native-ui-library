@@ -1,6 +1,6 @@
 {
   "name": "@visual-ui/renderer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Rendering and serialization logic for Visual UI Builder",
@@ -25,10 +25,12 @@
     "test:filter-link": "node dist/data-source/__tests__/filter-link.test.js"
   },
   "dependencies": {
-    "@visual-ui/core": "^0.1.0",
-    "@visual-ui/components": "^0.1.0"
+    "@visual-ui/core": "^0.2.0",
+    "@visual-ui/components": "^0.2.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.tsbuildinfo"
   ]
 }

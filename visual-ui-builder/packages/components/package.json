@@ -1,6 +1,6 @@
 {
   "name": "@visual-ui/components",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Native Web Components for Visual UI Builder",
@@ -23,9 +23,11 @@
     "test": "node dist/__tests__/integration.test.js && node dist/text/__tests__/ui-text.test.js && node dist/button/__tests__/ui-button.test.js && node dist/dropdown/__tests__/ui-dropdown.test.js && node dist/input/__tests__/ui-input.test.js && node dist/table/__tests__/ui-table.test.js"
   },
   "dependencies": {
-    "@visual-ui/core": "^0.1.0"
+    "@visual-ui/core": "^0.2.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.tsbuildinfo"
   ]
 }

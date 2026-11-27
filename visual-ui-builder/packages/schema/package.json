@@ -1,6 +1,6 @@
 {
   "name": "@visual-ui/schema",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Schema graph inputs for Visual UI Builder",
@@ -16,12 +16,14 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "test": "node dist/__tests__/parse.test.js && node dist/__tests__/list-page.test.js"
+    "test": "node dist/__tests__/parse.test.js && node dist/__tests__/list-page.test.js && node dist/__tests__/live-graph.test.js"
   },
   "dependencies": {
-    "@visual-ui/core": "^0.1.0"
+    "@visual-ui/core": "^0.2.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.tsbuildinfo"
   ]
 }

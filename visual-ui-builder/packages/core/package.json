@@ -1,6 +1,6 @@
 {
   "name": "@visual-ui/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Core types and utilities for Visual UI Builder",
@@ -19,6 +19,8 @@
     "test": "node dist/__tests__/action-contract.test.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.tsbuildinfo"
   ]
 }
